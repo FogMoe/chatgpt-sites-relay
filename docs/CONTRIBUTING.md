@@ -55,6 +55,7 @@ npm test
 ```
 
 `npm test` runs a production build before the Node.js tests. Do not make tests pass by weakening security checks or removing coverage.
+GitHub Actions runs the same sequence for every push and pull request.
 
 ## Commit messages
 

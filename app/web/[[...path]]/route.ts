@@ -1,4 +1,8 @@
 import {
+  chatGPTSignInPath,
+  getChatGPTUser,
+} from "@/app/chatgpt-auth";
+import {
   hasOnlyAllowedQueryKeys,
   isAllowedPathPrefix,
   MAX_WEB_ASSET_BYTES,
@@ -68,6 +72,21 @@ async function handleWebRelay(request: Request): Promise<Response> {
   }
 
   const requestUrl = new URL(request.url);
+  if (requestUrl.search.length > MAX_QUERY_BYTES) {
+    return errorResponse(
+      400,
+      "invalid_web_query",
+      "The static mirror query is invalid.",
+    );
+  }
+
+  const authorizationResponse = await authorizeWebRelay(
+    request,
+    requestUrl,
+    config,
+  );
+  if (authorizationResponse) return authorizationResponse;
+
   if (config.upstreamOrigin === requestUrl.origin) {
     return errorResponse(
       503,
@@ -304,6 +323,55 @@ async function handleWebRelay(request: Request): Promise<Response> {
     ),
     status: upstreamResponse.status,
   });
+}
+
+async function authorizeWebRelay(
+  request: Request,
+  requestUrl: URL,
+  config: ProxyConfig,
+): Promise<Response | null> {
+  const user = await getChatGPTUser();
+  if (!user) {
+    if (isTopLevelDocumentNavigation(request)) {
+      const headers = webSecurityHeaders();
+      headers.set(
+        "Location",
+        chatGPTSignInPath(`${requestUrl.pathname}${requestUrl.search}`),
+      );
+      return new Response(null, { headers, status: 302 });
+    }
+    return errorResponse(
+      401,
+      "web_authentication_required",
+      "Sign in with ChatGPT to access the static web mirror.",
+    );
+  }
+
+  const email = user.email.trim().toLowerCase();
+  if (!config.webRelay.allowedUserEmails.includes(email)) {
+    return errorResponse(
+      403,
+      "web_user_not_allowed",
+      "This ChatGPT user is not allowed to access the static web mirror.",
+    );
+  }
+
+  return null;
+}
+
+function isTopLevelDocumentNavigation(request: Request): boolean {
+  if (request.method !== "GET") return false;
+
+  const fetchDestination = request.headers
+    .get("sec-fetch-dest")
+    ?.trim()
+    .toLowerCase();
+  if (fetchDestination) return fetchDestination === "document";
+
+  return (
+    request.headers.get("accept")?.toLowerCase().includes("text/html") ??
+    false
+  );
 }
 
 function validateWebPath(

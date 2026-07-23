@@ -12,17 +12,27 @@
 
 ```dotenv
 WEB_RELAY_ENABLED=true
+WEB_RELAY_ALLOWED_USER_EMAILS=owner@example.com
 WEB_RELAY_ALLOWED_PATH_PREFIXES=/docs,/status
 WEB_RELAY_ALLOWED_QUERY_KEYS=lang,page
 ```
 
-启用镜像时必须设置 `WEB_RELAY_ALLOWED_PATH_PREFIXES`。只有在检查完整上游范围后才应使用 `/`。查询参数默认全部拒绝，必须按精确 key 列出。
+启用镜像时必须设置 `WEB_RELAY_ALLOWED_USER_EMAILS` 和 `WEB_RELAY_ALLOWED_PATH_PREFIXES`。用户邮箱采用不区分大小写的精确匹配，不接受通配符。只有在检查完整上游范围后，才应将 `/` 用作路径前缀。查询参数默认全部拒绝，必须按精确 key 列出。
 
-浏览器访问镜像时不使用 API 客户端的 `x-proxy-token`。任何开放 `/web/*` 的部署都必须继续受到 Sites 访问控制保护；默认采用仅所有者可访问的部署。
+## 访问控制
+
+浏览器访问镜像时不使用 API 客户端的 `x-proxy-token`。镜像先验证 Sites dispatcher 提供的 ChatGPT 身份，再用 `WEB_RELAY_ALLOWED_USER_EMAILS` 授权；只有通过后才会检查路径或查询策略并注入上游凭据。
+
+- 匿名顶层文档导航会跳转到由 dispatcher 管理的 `/signin-with-chatgpt` 流程。
+- 匿名图片、样式表、字体和 `HEAD` 请求直接返回 401，不会把登录页面当作资源跟随。
+- 已登录但不在白名单的用户收到 403。响应不会回显请求身份或已配置白名单。
+
+任何开放 `/web/*` 的部署都必须继续受到 Sites 访问控制保护；默认采用仅所有者可访问的部署。身份头只有在请求经过 Sites dispatcher 时才可信；本地开发或绕过 dispatcher 的 Worker 直连请求中，普通客户端可以伪造该请求头。
 
 ## 请求契约
 
 - 只接受 `GET` 和 `HEAD`。`POST`、表单提交、CORS 预检和其他方法都会被拒绝。
+- 身份认证与精确邮箱授权先于路径和查询策略检查。
 - `/web/path` 映射到 `PROXY_UPSTREAM_ORIGIN` 的 `/path`。
 - 解码后的路径必须匹配 `WEB_RELAY_ALLOWED_PATH_PREFIXES`。
 - 每个查询参数必须匹配 `WEB_RELAY_ALLOWED_QUERY_KEYS`。

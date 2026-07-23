@@ -45,7 +45,9 @@ This is the canonical runtime configuration contract. Do not put secrets in `.op
 | `PROXY_ALLOWED_QUERY_KEYS` | No | Exact query parameter names allowed upstream, comma-separated; an empty value denies every query parameter. |
 | `PROXY_ALLOWED_ORIGINS` | No | Exact HTTPS origins allowed for cross-origin calls; HTTP is limited to loopback development origins, and same-origin requests need no entry. |
 | `PROXY_UPSTREAM_AUTHORIZATION` | No | Complete upstream `Authorization` value injected by the server; printable ASCII only, up to 4096 characters. |
+| `EXPOSE_UPSTREAM_HOST` | No | Set to `true` to show the exact upstream hostname on the home page and in `/api/health`; defaults to `false`. |
 | `WEB_RELAY_ENABLED` | No | Enables the optional static web mirror at `/web/*`; defaults to `false`. |
+| `WEB_RELAY_ALLOWED_USER_EMAILS` | When enabled | Comma-separated exact ChatGPT account emails allowed to use the static mirror; matching is case-insensitive. |
 | `WEB_RELAY_ALLOWED_PATH_PREFIXES` | When enabled | Comma-separated upstream path prefixes available through the static mirror. |
 | `WEB_RELAY_ALLOWED_QUERY_KEYS` | No | Exact query parameter names allowed through the static mirror; an empty value denies every query parameter. |
 
@@ -79,7 +81,7 @@ Response bodies stream through without buffering an entire SSE response first. A
 
 The optional `/web/*` surface is a read-only mirror of the same configured upstream, not an arbitrary-URL web proxy. It deliberately sacrifices JavaScript, cookies, and forms to keep untrusted upstream code out of the Sites origin.
 
-Read [`docs/static-web-mirror.md`](./docs/static-web-mirror.md) before enabling it. Keep deployments that expose this surface protected by Sites access control.
+Read [`docs/static-web-mirror.md`](./docs/static-web-mirror.md) before enabling it. The mirror requires both Sites access control and an exact ChatGPT user email allowlist; it does not use the API client's `x-proxy-token`.
 
 ## Status and errors
 
@@ -90,6 +92,8 @@ Read [`docs/static-web-mirror.md`](./docs/static-web-mirror.md) before enabling 
 - `ready`: configuration passed static validation, while upstream reachability remains `not_checked`
 
 `ready` returns HTTP 200; `setup_required` and `invalid` return HTTP 503. `OPTIONS` is reported separately as the local preflight method, not as a forwarded method.
+
+The exact upstream hostname is hidden by default: `upstreamHost` remains `null` unless `EXPOSE_UPSTREAM_HOST=true`.
 
 API errors use stable English error codes. Common errors include:
 
@@ -111,6 +115,8 @@ API errors use stable English error codes. Common errors include:
 ## Security boundaries
 
 The proxy fails closed: missing or invalid configuration stops forwarding. It authenticates before applying method-path policy, rebuilds upstream headers, separates proxy and upstream credentials, rejects multiply encoded path bypasses and response types that could execute as same-origin content, and marks every response `no-store`.
+
+The static mirror authenticates with the identity supplied by the Sites dispatcher and authorizes exact emails from `WEB_RELAY_ALLOWED_USER_EMAILS` before revealing path policy or adding upstream credentials. That identity header is trusted only behind the Sites dispatcher; a direct local or Worker request can supply an ordinary header and must not be treated as an equivalent production boundary.
 
 A fixed hostname cannot defend against malicious DNS behavior by the upstream domain owner. Configure only an upstream you control or trust, and enforce quotas and rate limits there. For a public deployment, the proxy access token does not replace platform access policy or upstream rate limiting.
 
@@ -145,4 +151,4 @@ After deployment, also verify:
 - cookies, client `Authorization`, and identity headers do not reach the upstream
 - JSON returns normally and the first SSE chunk arrives before the stream ends
 - the API relay does not pass through HTML, redirects, or `Set-Cookie`
-- when the static mirror is enabled, active content is removed and only allowed paths, queries, assets, and same-policy redirects remain
+- when the static mirror is enabled, anonymous and non-allowlisted users are denied before policy checks, active content is removed, and only allowed paths, queries, assets, and same-policy redirects remain

@@ -33,7 +33,9 @@ export async function GET(): Promise<Response> {
         enabled: status.webRelayEnabled,
         endpoint: "/web/*",
         allowedPathCount: status.webRelayPathCount,
-        accessBoundary: "private_sites_deployment",
+        accessBoundary: "sites_access_control_and_user_allowlist",
+        userAllowlistConfigured:
+          status.webRelayUserAllowlistConfigured,
         supportedMethods: WEB_RELAY_METHODS,
         scriptPolicy: "blocked",
         formPolicy: "blocked",

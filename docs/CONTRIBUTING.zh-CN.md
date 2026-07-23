@@ -55,6 +55,7 @@ npm test
 ```
 
 `npm test` 会先执行生产构建，再运行 Node.js 测试。不要通过降低安全检查或删除覆盖来让测试通过。
+GitHub Actions 会在每次 push 和 Pull Request 中自动运行同一组检查。
 
 ## 提交信息
 

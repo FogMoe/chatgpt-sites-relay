@@ -8,6 +8,7 @@ workerUrl.searchParams.set("test", `${process.pid}-${Date.now()}`);
 const { default: worker } = await import(workerUrl.href);
 
 const proxyEnvKeys = [
+  "EXPOSE_UPSTREAM_HOST",
   "PROXY_ACCESS_TOKEN",
   "PROXY_ALLOWED_ORIGINS",
   "PROXY_ALLOWED_QUERY_KEYS",
@@ -16,8 +17,11 @@ const proxyEnvKeys = [
   "PROXY_UPSTREAM_ORIGIN",
   "WEB_RELAY_ALLOWED_PATH_PREFIXES",
   "WEB_RELAY_ALLOWED_QUERY_KEYS",
+  "WEB_RELAY_ALLOWED_USER_EMAILS",
   "WEB_RELAY_ENABLED",
 ];
+
+const webUserEmail = "owner@example.com";
 
 const readyEnv = {
   PROXY_ACCESS_TOKEN: "sR7pQ2mX9vK4nD8cL1aF6wY3tB5hJ0uE",
@@ -31,6 +35,7 @@ const webReadyEnv = {
   ...readyEnv,
   WEB_RELAY_ALLOWED_PATH_PREFIXES: "/",
   WEB_RELAY_ALLOWED_QUERY_KEYS: "v",
+  WEB_RELAY_ALLOWED_USER_EMAILS: webUserEmail,
   WEB_RELAY_ENABLED: "true",
 };
 
@@ -61,6 +66,14 @@ async function request(path = "/", init, env = {}) {
       executionContext,
     ),
   );
+}
+
+async function webRequest(path, init, env = webReadyEnv) {
+  const headers = new Headers(init?.headers);
+  if (!headers.has("oai-authenticated-user-email")) {
+    headers.set("oai-authenticated-user-email", webUserEmail);
+  }
+  return request(path, { ...init, headers }, env);
 }
 
 async function withProxyEnv(values, run) {
@@ -166,7 +179,7 @@ test("reports a statically valid configuration without claiming reachability", a
 
   assert.equal(response.status, 200);
   assert.equal(payload.status, "ready");
-  assert.equal(payload.upstreamHost, "api.example.com");
+  assert.equal(payload.upstreamHost, null);
   assert.equal(payload.accessTokenConfigured, true);
   assert.equal(payload.allowedRouteCount, 3);
   assert.equal(payload.reachability, "not_checked");
@@ -177,6 +190,36 @@ test("reports a statically valid configuration without claiming reachability", a
   assert.equal(webResponse.status, 200);
   assert.equal(webPayload.webRelay.enabled, true);
   assert.equal(webPayload.webRelay.allowedPathCount, 1);
+  assert.equal(webPayload.webRelay.userAllowlistConfigured, true);
+  assert.equal(
+    webPayload.webRelay.accessBoundary,
+    "sites_access_control_and_user_allowlist",
+  );
+  assert.doesNotMatch(JSON.stringify(webPayload), /owner@example\.com/);
+
+  const webPage = await request("/", undefined, webReadyEnv);
+  assert.doesNotMatch(await webPage.text(), /owner@example\.com/);
+
+  const exposedResponse = await request("/api/health", undefined, {
+    ...readyEnv,
+    EXPOSE_UPSTREAM_HOST: "true",
+  });
+  const exposedPayload = await exposedResponse.json();
+  assert.equal(exposedResponse.status, 200);
+  assert.equal(exposedPayload.upstreamHost, "api.example.com");
+
+  const hiddenPage = await request("/", undefined, readyEnv);
+  const hiddenHtml = await hiddenPage.text();
+  assert.equal(hiddenPage.status, 200);
+  assert.doesNotMatch(hiddenHtml, /api\.example\.com/);
+  assert.match(hiddenHtml, /已配置/);
+  assert.match(hiddenHtml, /Configured upstream/);
+
+  const exposedPage = await request("/", undefined, {
+    ...readyEnv,
+    EXPOSE_UPSTREAM_HOST: "true",
+  });
+  assert.match(await exposedPage.text(), /api\.example\.com/);
 });
 
 test("does not echo invalid runtime values from the health endpoint", async () => {
@@ -206,6 +249,20 @@ test("rejects placeholder secrets and unsafe runtime values", async () => {
     },
     {
       PROXY_ALLOWED_ORIGINS: "http://client.example",
+    },
+    {
+      EXPOSE_UPSTREAM_HOST: "yes",
+    },
+    {
+      WEB_RELAY_ALLOWED_PATH_PREFIXES: "/",
+      WEB_RELAY_ALLOWED_USER_EMAILS: "*",
+      WEB_RELAY_ENABLED: "true",
+    },
+    {
+      WEB_RELAY_ALLOWED_PATH_PREFIXES: "/",
+      WEB_RELAY_ALLOWED_USER_EMAILS:
+        "owner@example.com,,second@example.com",
+      WEB_RELAY_ENABLED: "true",
     },
   ];
 
@@ -448,6 +505,44 @@ test("rejects an empty POST body", async () => {
     assert.equal(response.status, 400);
     assert.equal((await response.json()).error, "empty_request_body");
     assert.equal(upstreamCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("cancels an upstream body for a bodyless API response", async () => {
+  let bodyCancelled = false;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(
+      new ReadableStream({
+        cancel() {
+          bodyCancelled = true;
+        },
+        start(controller) {
+          controller.enqueue(new TextEncoder().encode('{"unused":true}'));
+        },
+      }),
+      {
+        headers: { "content-type": "application/json" },
+      },
+    );
+
+  try {
+    const response = await request(
+      "/api/proxy/v1/models",
+      {
+        headers: { "x-proxy-token": readyEnv.PROXY_ACCESS_TOKEN },
+        method: "HEAD",
+      },
+      {
+        ...readyEnv,
+        PROXY_ALLOWED_ROUTES: `${readyEnv.PROXY_ALLOWED_ROUTES},HEAD:/v1/models`,
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), "");
+    assert.equal(bodyCancelled, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -715,7 +810,7 @@ test("mirrors and sanitizes HTML from the single configured upstream", async () 
   };
 
   try {
-    const response = await request(
+    const response = await webRequest(
       "/web/docs/index.html?v=2",
       {
         headers: {
@@ -723,7 +818,7 @@ test("mirrors and sanitizes HTML from the single configured upstream", async () 
           Cookie: "browser=secret",
           Origin: "https://client.example",
           Referer: "https://client.example/private",
-          "oai-authenticated-user-email": "person@example.com",
+          "oai-authenticated-user-email": "OWNER@EXAMPLE.COM",
         },
       },
       webReadyEnv,
@@ -788,7 +883,7 @@ test("rewrites safe CSS resources and removes active or external references", as
   };
 
   try {
-    const response = await request(
+    const response = await webRequest(
       "/web/assets/site.css",
       undefined,
       webReadyEnv,
@@ -819,7 +914,7 @@ test("rejects disguised CSS fetches and removes image-set string URLs", async ()
         new Response(css, {
           headers: { "content-type": "text/css; charset=utf-8" },
         });
-      const response = await request(
+      const response = await webRequest(
         "/web/assets/site.css",
         undefined,
         webReadyEnv,
@@ -842,7 +937,7 @@ test("rejects disguised CSS fetches and removes image-set string URLs", async ()
           headers: { "content-type": "text/css; charset=utf-8" },
         },
       );
-    const response = await request(
+    const response = await webRequest(
       "/web/assets/site.css",
       undefined,
       webReadyEnv,
@@ -870,7 +965,7 @@ test("enforces static mirror response metadata, size, and time limits", async ()
         headers: { "content-type": "image/png" },
       });
     };
-    const head = await request(
+    const head = await webRequest(
       "/web/assets/logo.png",
       { method: "HEAD" },
       webReadyEnv,
@@ -886,7 +981,7 @@ test("enforces static mirror response metadata, size, and time limits", async ()
           "content-type": "text/html; charset=utf-8",
         },
       });
-    const compressed = await request(
+    const compressed = await webRequest(
       "/web/docs",
       undefined,
       webReadyEnv,
@@ -901,7 +996,7 @@ test("enforces static mirror response metadata, size, and time limits", async ()
       new Response("<p>legacy charset</p>", {
         headers: { "content-type": "text/html; charset=iso-8859-1" },
       });
-    const charset = await request("/web/docs", undefined, webReadyEnv);
+    const charset = await webRequest("/web/docs");
     assert.equal(charset.status, 502);
     assert.equal(
       (await charset.json()).error,
@@ -915,7 +1010,7 @@ test("enforces static mirror response metadata, size, and time limits", async ()
           "content-type": "text/html; charset=utf-8",
         },
       });
-    const declaredLarge = await request(
+    const declaredLarge = await webRequest(
       "/web/docs",
       undefined,
       webReadyEnv,
@@ -937,7 +1032,7 @@ test("enforces static mirror response metadata, size, and time limits", async ()
         }),
         { headers: { "content-type": "image/png" } },
       );
-    const streamedLarge = await request(
+    const streamedLarge = await webRequest(
       "/web/assets/logo.png",
       undefined,
       webReadyEnv,
@@ -963,7 +1058,7 @@ test("enforces static mirror response metadata, size, and time limits", async ()
         }),
         { headers: { "content-type": "text/html; charset=utf-8" } },
       );
-    const timedOut = await request("/web/docs", undefined, webReadyEnv);
+    const timedOut = await webRequest("/web/docs");
     assert.equal(timedOut.status, 504);
     assert.equal(
       (await timedOut.json()).error,
@@ -972,6 +1067,100 @@ test("enforces static mirror response metadata, size, and time limits", async ()
   } finally {
     globalThis.fetch = originalFetch;
     globalThis.setTimeout = originalSetTimeout;
+  }
+});
+
+test("authenticates and authorizes the static mirror before policy checks", async () => {
+  let upstreamCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    upstreamCalls += 1;
+    return new Response("<p>unexpected</p>", {
+      headers: { "content-type": "text/html" },
+    });
+  };
+
+  try {
+    const anonymousDocument = await request(
+      "/web/docs?v=1",
+      {
+        headers: {
+          Accept: "text/html",
+          "Sec-Fetch-Dest": "document",
+        },
+      },
+      webReadyEnv,
+    );
+    assert.equal(anonymousDocument.status, 302);
+    assert.equal(
+      anonymousDocument.headers.get("location"),
+      "/signin-with-chatgpt?return_to=%2Fweb%2Fdocs%3Fv%3D1",
+    );
+
+    const fallbackDocument = await request(
+      "/web/docs",
+      { headers: { Accept: "text/html" } },
+      webReadyEnv,
+    );
+    assert.equal(fallbackDocument.status, 302);
+
+    const nonDocumentHtml = await request(
+      "/web/docs",
+      {
+        headers: {
+          Accept: "text/html",
+          "Sec-Fetch-Dest": "empty",
+        },
+      },
+      webReadyEnv,
+    );
+    assert.equal(nonDocumentHtml.status, 401);
+    assert.equal(nonDocumentHtml.headers.get("location"), null);
+
+    const anonymousAsset = await request(
+      "/web/assets/logo.png",
+      {
+        headers: {
+          Accept: "image/png",
+          "Sec-Fetch-Dest": "image",
+        },
+      },
+      webReadyEnv,
+    );
+    assert.equal(anonymousAsset.status, 401);
+    assert.equal(
+      (await anonymousAsset.json()).error,
+      "web_authentication_required",
+    );
+    assert.equal(anonymousAsset.headers.get("location"), null);
+
+    const anonymousHead = await request(
+      "/web/assets/logo.png",
+      { method: "HEAD" },
+      webReadyEnv,
+    );
+    assert.equal(anonymousHead.status, 401);
+    assert.equal(anonymousHead.headers.get("location"), null);
+
+    const deniedUser = await request(
+      "/web/outside-policy?target=private",
+      {
+        headers: {
+          "oai-authenticated-user-email": "intruder@example.com",
+        },
+      },
+      webReadyEnv,
+    );
+    const deniedBody = await deniedUser.text();
+    assert.equal(deniedUser.status, 403);
+    assert.equal(JSON.parse(deniedBody).error, "web_user_not_allowed");
+    assert.doesNotMatch(
+      deniedBody,
+      /intruder@example\.com|owner@example\.com/,
+    );
+    assert.equal(upstreamCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 });
 
@@ -997,32 +1186,40 @@ test("fails closed for disabled, out-of-policy, encoded, and non-GET web request
     assert.equal(enabledWithoutPaths.status, 503);
     assert.equal((await enabledWithoutPaths.json()).status, "invalid");
 
+    const enabledWithoutUsers = await request("/api/health", undefined, {
+      ...readyEnv,
+      WEB_RELAY_ALLOWED_PATH_PREFIXES: "/docs",
+      WEB_RELAY_ENABLED: "true",
+    });
+    assert.equal(enabledWithoutUsers.status, 503);
+    assert.equal((await enabledWithoutUsers.json()).status, "invalid");
+
     const restrictedEnv = {
       ...webReadyEnv,
       WEB_RELAY_ALLOWED_PATH_PREFIXES: "/docs",
     };
-    const wrongBoundary = await request(
+    const wrongBoundary = await webRequest(
       "/web/docs-private",
       undefined,
       restrictedEnv,
     );
     assert.equal(wrongBoundary.status, 403);
 
-    const deniedQuery = await request(
+    const deniedQuery = await webRequest(
       "/web/docs?target=https%3A%2F%2Fevil.example",
       undefined,
       restrictedEnv,
     );
     assert.equal(deniedQuery.status, 403);
 
-    const encoded = await request(
+    const encoded = await webRequest(
       "/web/docs/%252e%252e/private",
       undefined,
       restrictedEnv,
     );
     assert.equal(encoded.status, 400);
 
-    const loop = await request(
+    const loop = await webRequest(
       "/web/docs",
       { headers: { "x-sites-relay-hop": "1" } },
       restrictedEnv,
@@ -1056,7 +1253,7 @@ test("allows only safe web assets and same-policy redirects", async () => {
       new Response("alert(1)", {
         headers: { "content-type": "application/javascript" },
       });
-    const script = await request(
+    const script = await webRequest(
       "/web/assets/app.js",
       undefined,
       webReadyEnv,
@@ -1072,7 +1269,7 @@ test("allows only safe web assets and same-policy redirects", async () => {
         headers: { location: "https://evil.example/path" },
         status: 302,
       });
-    const externalRedirect = await request(
+    const externalRedirect = await webRequest(
       "/web/docs",
       undefined,
       webReadyEnv,
@@ -1084,7 +1281,7 @@ test("allows only safe web assets and same-policy redirects", async () => {
         headers: { location: "/docs/page?v=1" },
         status: 302,
       });
-    const safeRedirect = await request(
+    const safeRedirect = await webRequest(
       "/web/docs",
       undefined,
       webReadyEnv,
@@ -1096,7 +1293,7 @@ test("allows only safe web assets and same-policy redirects", async () => {
       new Response(new Uint8Array([137, 80, 78, 71]), {
         headers: { "content-type": "image/png" },
       });
-    const image = await request(
+    const image = await webRequest(
       "/web/assets/logo.png",
       undefined,
       webReadyEnv,
@@ -1127,6 +1324,7 @@ test("removes the disposable starter surface and keeps project metadata", async 
     agents,
     hosting,
     envExample,
+    ciWorkflow,
     repositorySkill,
     skillMetadata,
   ] = await Promise.all([
@@ -1160,6 +1358,10 @@ test("removes the disposable starter surface and keeps project metadata", async 
     readFile(new URL("../.openai/hosting.json", import.meta.url), "utf8"),
     readFile(new URL("../.env.example", import.meta.url), "utf8"),
     readFile(
+      new URL("../.github/workflows/ci.yml", import.meta.url),
+      "utf8",
+    ),
+    readFile(
       new URL(
         "../.agents/skills/operate-sites-relay/SKILL.md",
         import.meta.url,
@@ -1181,6 +1383,8 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.match(packageJson, /"name": "sites-relay"/);
   assert.match(readme, /Sites Relay/);
   assert.match(readme, /## Security boundaries/);
+  assert.match(readme, /EXPOSE_UPSTREAM_HOST/);
+  assert.match(readme, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(
     readme,
     /English \| \[Chinese\]\(\.\/docs\/README\.zh-CN\.md\)/,
@@ -1201,6 +1405,8 @@ test("removes the disposable starter surface and keeps project metadata", async 
   );
   assert.doesNotMatch(readme, /[\u3400-\u9fff]/);
   assert.match(readmeZh, /## 安全边界/);
+  assert.match(readmeZh, /EXPOSE_UPSTREAM_HOST/);
+  assert.match(readmeZh, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(readmeZh, /\[英文\]\(\.\.\/README\.md\) \| 简体中文/);
   assert.doesNotMatch(readmeZh, /\[简体中文\]\(/);
   assert.match(readmeZh, /!\[Sites Relay[^\]]+\]\(\.\.\/public\/og\.png\)/);
@@ -1209,6 +1415,7 @@ test("removes the disposable starter surface and keeps project metadata", async 
     /\[`static-web-mirror\.zh-CN\.md`\]\(\.\/static-web-mirror\.zh-CN\.md\)/,
   );
   assert.match(contributing, /Conventional Commits 1\.0\.0/);
+  assert.match(contributing, /GitHub Actions/);
   assert.match(contributing, /BREAKING CHANGE:/);
   assert.match(contributing, /general-purpose HTTP forward proxying, SOCKS/);
   assert.match(
@@ -1219,6 +1426,7 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.doesNotMatch(contributing, /[\u3400-\u9fff]/);
   assert.match(contributingZh, /## 项目边界/);
   assert.match(contributingZh, /Conventional Commits 1\.0\.0/);
+  assert.match(contributingZh, /GitHub Actions/);
   assert.match(
     contributingZh,
     /\[英文\]\(\.\/CONTRIBUTING\.md\) \| 简体中文/,
@@ -1226,6 +1434,7 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.doesNotMatch(contributingZh, /\[简体中文\]\(/);
   assert.match(staticWebMirror, /disabled by default/);
   assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_PATH_PREFIXES/);
+  assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(
     staticWebMirror,
     /English \| \[Chinese\]\(\.\/static-web-mirror\.zh-CN\.md\)/,
@@ -1234,6 +1443,7 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.doesNotMatch(staticWebMirror, /[\u3400-\u9fff]/);
   assert.match(staticWebMirrorZh, /# 静态网页镜像/);
   assert.match(staticWebMirrorZh, /WEB_RELAY_ALLOWED_PATH_PREFIXES/);
+  assert.match(staticWebMirrorZh, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(
     staticWebMirrorZh,
     /\[英文\]\(\.\/static-web-mirror\.md\) \| 简体中文/,
@@ -1266,13 +1476,23 @@ test("removes the disposable starter surface and keeps project metadata", async 
   );
   assert.doesNotMatch(webCompatibilityDirectionZh, /\[简体中文\]\(/);
   assert.match(envExample, /PROXY_ALLOWED_ROUTES=/);
+  assert.match(envExample, /EXPOSE_UPSTREAM_HOST=false/);
   assert.match(envExample, /WEB_RELAY_ENABLED=false/);
+  assert.match(envExample, /WEB_RELAY_ALLOWED_USER_EMAILS=/);
   assert.match(envExample, /WEB_RELAY_ALLOWED_PATH_PREFIXES=/);
   assert.doesNotMatch(envExample, /PROXY_ALLOWED_PATH_PREFIXES|replace-with/);
+  assert.match(ciWorkflow, /actions\/checkout@v7/);
+  assert.match(ciWorkflow, /actions\/setup-node@v7/);
+  assert.match(ciWorkflow, /npm ci/);
+  assert.match(ciWorkflow, /npm run typecheck/);
+  assert.match(ciWorkflow, /npm run lint/);
+  assert.match(ciWorkflow, /npm test/);
   assert.match(agents, /Use npm and preserve `package-lock\.json`/);
   assert.match(agents, /docs\/static-web-mirror\.md/);
   assert.doesNotMatch(agents, /[^\x00-\x7f]/);
   assert.match(repositorySkill, /name: operate-sites-relay/);
+  assert.match(repositorySkill, /WEB_RELAY_ALLOWED_USER_EMAILS/);
+  assert.match(repositorySkill, /EXPOSE_UPSTREAM_HOST/);
   assert.match(repositorySkill, /## Deploy to Sites/);
   assert.doesNotMatch(repositorySkill, /[^\x00-\x7f]/);
   assert.match(skillMetadata, /\$operate-sites-relay/);

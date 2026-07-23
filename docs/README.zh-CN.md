@@ -45,7 +45,9 @@ npm run dev
 | `PROXY_ALLOWED_QUERY_KEYS` | 否 | 可送往上游的精确查询参数名，逗号分隔；空值表示全部拒绝。 |
 | `PROXY_ALLOWED_ORIGINS` | 否 | 允许跨域浏览器调用的精确 HTTPS origin，逗号分隔；HTTP 只允许 loopback 开发 origin，同源请求无需填写。 |
 | `PROXY_UPSTREAM_AUTHORIZATION` | 否 | 服务端注入的完整上游 `Authorization` 值；只接受不超过 4096 字符的 printable ASCII。 |
+| `EXPOSE_UPSTREAM_HOST` | 否 | 设为 `true` 后才会在首页和 `/api/health` 显示精确上游 hostname；默认为 `false`。 |
 | `WEB_RELAY_ENABLED` | 否 | 在 `/web/*` 启用可选静态网页镜像；默认为 `false`。 |
+| `WEB_RELAY_ALLOWED_USER_EMAILS` | 启用时 | 允许使用静态镜像的精确 ChatGPT 账户邮箱，逗号分隔；匹配不区分大小写。 |
 | `WEB_RELAY_ALLOWED_PATH_PREFIXES` | 启用时 | 允许通过静态镜像访问的上游路径前缀，逗号分隔。 |
 | `WEB_RELAY_ALLOWED_QUERY_KEYS` | 否 | 允许通过静态镜像的精确查询参数名；空值表示全部拒绝。 |
 
@@ -79,7 +81,7 @@ curl -N "$SITE_URL/api/proxy/v1/responses" \
 
 可选的 `/web/*` 是同一个固定上游的只读镜像，不是任意 URL 网页代理。它有意放弃 JavaScript、Cookie 和表单，避免不受信任的上游代码在 Sites origin 中运行。
 
-启用前请阅读 [`static-web-mirror.zh-CN.md`](./static-web-mirror.zh-CN.md)。对外提供该入口时，部署必须继续受到 Sites 访问控制保护。
+启用前请阅读 [`static-web-mirror.zh-CN.md`](./static-web-mirror.zh-CN.md)。镜像同时要求 Sites 访问控制和精确 ChatGPT 用户邮箱白名单；它不使用 API 客户端的 `x-proxy-token`。
 
 ## 状态与错误
 
@@ -90,6 +92,8 @@ curl -N "$SITE_URL/api/proxy/v1/responses" \
 - `ready`：配置通过静态验证，但上游连通性仍为 `not_checked`
 
 `ready` 返回 HTTP 200；`setup_required` 和 `invalid` 返回 HTTP 503。`OPTIONS` 会单独列为本地预检方法，不属于上游转发方法。
+
+精确上游 hostname 默认隐藏；只有设置 `EXPOSE_UPSTREAM_HOST=true` 时，`upstreamHost` 才不再是 `null`。
 
 API 错误使用稳定英文错误码。常见错误包括：
 
@@ -111,6 +115,8 @@ API 错误使用稳定英文错误码。常见错误包括：
 ## 安全边界
 
 代理采用 fail-closed 设计：缺少或错误配置会停止转发。它先验证代理令牌，再应用方法与路径策略；重建上游请求头、分离代理访问令牌与上游凭据、拒绝多重编码路径绕过和可能形成同源脚本执行的响应，并为所有响应设置 `no-store`。
+
+静态镜像先使用 Sites dispatcher 提供的身份完成认证，再通过 `WEB_RELAY_ALLOWED_USER_EMAILS` 的精确邮箱列表授权；只有通过后才会暴露路径策略或加入上游凭据。该身份头只在 Sites dispatcher 后方可信；本地直连或绕过 dispatcher 的 Worker 请求可以自行提供普通请求头，不能视为等价的生产安全边界。
 
 固定 hostname 不能抵御由上游域名控制者实施的恶意 DNS 行为。只配置你控制或信任的上游，并在上游启用配额和速率限制。公开部署时，代理访问令牌不能替代平台访问策略或上游限流。
 
@@ -145,4 +151,4 @@ npm test
 - Cookie、客户端 `Authorization` 和身份头未抵达上游
 - JSON 正常返回，SSE 首块在流结束前到达
 - API 中继不会透传 HTML、重定向或 `Set-Cookie`
-- 启用静态镜像时，主动内容会被移除，只保留允许的路径、查询、资源和策略内重定向
+- 启用静态镜像时，匿名和不在白名单的用户会在路径策略检查前被拒绝；主动内容会被移除，只保留允许的路径、查询、资源和策略内重定向

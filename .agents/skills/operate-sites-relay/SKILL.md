@@ -15,10 +15,12 @@ Read these files in order:
 2. `.openai/hosting.json` for the Sites project identifier. Reuse `project_id` exactly when it exists.
 3. `package.json` for the Node.js requirement and canonical commands.
 4. `lib/proxy-config.ts` for runtime values, route policy, size limits, and timeouts.
-5. `app/api/proxy/[[...path]]/route.ts`, `app/web/[[...path]]/route.ts`, `lib/web-mirror.ts`, and `app/api/health/route.ts` for API forwarding, static mirroring, transformation, and status behavior.
-6. `docs/static-web-mirror.md` for the current optional mirror contract.
-7. `tests/rendered-html.test.mjs` for required regression boundaries.
-8. `git status --short` to preserve existing user changes and avoid cleaning unrelated work.
+5. `app/chatgpt-auth.ts` for the Sites dispatcher identity contract and safe sign-in return paths.
+6. `app/api/proxy/[[...path]]/route.ts`, `app/web/[[...path]]/route.ts`, `lib/web-mirror.ts`, and `app/api/health/route.ts` for API forwarding, static mirroring, transformation, and status behavior.
+7. `.github/workflows/ci.yml` for the automated validation contract.
+8. `docs/static-web-mirror.md` for the current optional mirror contract.
+9. `tests/rendered-html.test.mjs` for required regression boundaries.
+10. `git status --short` to preserve existing user changes and avoid cleaning unrelated work.
 
 The separate Browser Relay architecture proposed for full web compatibility is documented in `docs/web-compatibility-direction.md`. It does not expand the current API relay contract.
 
@@ -33,18 +35,22 @@ The separate Browser Relay architecture proposed for full web compatibility is d
 - Return only JSON, `+json`, or SSE. Block redirects, compressed responses, dangerous response headers, oversized responses, and timed-out responses.
 - Reject encoded percent, slash, backslash, NUL, dot-segment, IP-literal, local-hostname, and trailing-dot hostname bypasses.
 - Return 503 for missing or invalid configuration. `ready` means static validation passed; it does not claim upstream reachability.
+- Hide the exact upstream hostname from the home page and `/api/health` unless `EXPOSE_UPSTREAM_HOST=true`.
 - Do not weaken these boundaries for compatibility, debugging, or examples. Explain risk and obtain explicit authorization before proposing broader capabilities.
 
 ## Preserve the static mirror contract
 
 - Keep `/web/*` disabled unless `WEB_RELAY_ENABLED=true`.
 - Use the same fixed HTTPS upstream as the API relay. Never accept a client-selected origin or target URL.
+- Require at least one exact ChatGPT account email in `WEB_RELAY_ALLOWED_USER_EMAILS`. Authenticate with the Sites dispatcher identity and authorize that allowlist before path policy checks or upstream credential injection.
+- Redirect only anonymous top-level document navigation to the dispatcher-owned sign-in flow. Return 401 for anonymous subresources and `HEAD`, and 403 for signed-in users outside the allowlist without echoing identities.
 - Forward only `GET` and `HEAD`. Bind paths to `WEB_RELAY_ALLOWED_PATH_PREFIXES` and deny query keys unless explicitly listed in `WEB_RELAY_ALLOWED_QUERY_KEYS`.
 - Rebuild upstream headers, prevent relay loops, and never forward client credentials, cookies, identity, origin, referer, or forwarding headers.
 - Accept only supported UTF-8 HTML/CSS, image, and font media types within the documented byte and time limits.
 - Sanitize HTML with an attribute allowlist. Parse and rewrite CSS, reject CSS escapes, remove declarations using string-capable fetch functions such as `src()`, `image()`, and `image-set()`, keep only same-origin policy-approved resources, and block active content, forms, embedded documents, cookies, and external references.
 - Allow redirects only when they remain on the fixed upstream and within path and query policy.
 - Keep deployments exposing `/web/*` protected by Sites access control. The static mirror is not authenticated by the API client's `x-proxy-token`.
+- Trust `oai-authenticated-user-email` only behind the Sites dispatcher. Local or direct Worker requests can forge an ordinary request header and are not an equivalent production authentication boundary.
 
 ## Modify the project
 
@@ -66,6 +72,7 @@ npm test
 ```
 
 `npm test` runs a production build before the Node.js tests. Run `npm ci` first after dependency or lockfile changes.
+The repository CI workflow runs the same typecheck, lint, and production-build test sequence for every push and pull request.
 
 For a read-only audit that cannot generate `dist/`, run only typecheck and lint and state that build-backed tests were not run. Do not substitute that reduced check set for full validation before deployment.
 
@@ -74,9 +81,10 @@ At minimum, confirm:
 - The bilingual home page, paired repository documents, and `public/og.png` exist, and starter content has not returned.
 - Missing or invalid configuration makes `/api/health` return 503 without exposing secrets.
 - Complete static configuration makes `/api/health` return 200 while `reachability` remains `not_checked`.
+- The exact upstream hostname stays hidden by default and appears only after the explicit exposure switch is enabled.
 - A wrong token returns 401 before route policy, and out-of-policy methods, paths, queries, origins, and encoded bypasses fail.
 - Header isolation, the 1 MiB request limit, response type/size/timeout policy, and first-chunk SSE streaming pass.
-- When the static mirror is enabled, path and query policy, HTML sanitization, CSS rewriting, safe asset handling, redirect policy, and response isolation pass.
+- When the static mirror is enabled, missing or invalid user allowlists fail closed; anonymous and non-allowlisted users are denied before policy checks; and path/query policy, HTML sanitization, CSS rewriting, safe asset handling, redirect policy, and response isolation pass.
 - `.gitignore` does not ignore `build/`, `lib/`, or other required deployment source.
 
 ## Deploy to Sites

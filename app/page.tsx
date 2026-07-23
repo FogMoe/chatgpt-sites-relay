@@ -71,9 +71,9 @@ const setupSteps = [
     titleZh: "可选：启用网页镜像",
     titleEn: "Optional: enable the web mirror",
     variable: "WEB_RELAY_*",
-    copyZh: "显式启用后，只开放同一上游中列入白名单的静态页面与资源路径。",
+    copyZh: "显式启用后，只允许指定 ChatGPT 用户访问同一上游中列入白名单的静态路径。",
     copyEn:
-      "When explicitly enabled, expose only allowlisted static pages and assets from the same upstream.",
+      "When enabled, only named ChatGPT users can access allowlisted static paths from the same upstream.",
   },
   {
     titleZh: "部署后验证",
@@ -211,12 +211,18 @@ export default function Home() {
               <dt>上游 <span lang="en">Upstream</span></dt>
               <dd>
                 {status.upstreamHost ??
-                  (status.upstreamConfigured ? "已提供" : "未设置")}
+                  (status.upstreamConfigured
+                    ? status.state === "ready"
+                      ? "已配置"
+                      : "已提供"
+                    : "未设置")}
                 <small lang="en">
                   {status.upstreamHost
                     ? "Configured host"
                     : status.upstreamConfigured
-                      ? "Provided"
+                      ? status.state === "ready"
+                        ? "Configured"
+                        : "Provided"
                       : "Not set"}
                 </small>
               </dd>
@@ -282,9 +288,22 @@ export default function Home() {
             <span className="flow-arrow" aria-hidden="true">→</span>
             <div className={`flow-node flow-node-${status.state}`}>
               <span>03</span>
-              <strong>{status.upstreamHost ?? "未配置"}</strong>
+              <strong>
+                {status.upstreamHost ??
+                  (status.upstreamConfigured
+                    ? status.state === "ready"
+                      ? "已配置"
+                      : "已提供"
+                    : "未配置")}
+              </strong>
               <small lang="en">
-                {status.upstreamHost ? "Upstream" : "Not configured"}
+                {status.upstreamHost
+                  ? "Upstream"
+                  : status.upstreamConfigured
+                    ? status.state === "ready"
+                      ? "Configured upstream"
+                      : "Provided"
+                    : "Not configured"}
               </small>
             </div>
           </div>

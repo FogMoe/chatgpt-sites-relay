@@ -12,17 +12,27 @@ The normal required proxy variables must already be valid. Add:
 
 ```dotenv
 WEB_RELAY_ENABLED=true
+WEB_RELAY_ALLOWED_USER_EMAILS=owner@example.com
 WEB_RELAY_ALLOWED_PATH_PREFIXES=/docs,/status
 WEB_RELAY_ALLOWED_QUERY_KEYS=lang,page
 ```
 
-`WEB_RELAY_ALLOWED_PATH_PREFIXES` is required when the mirror is enabled. Use `/` only after reviewing the complete upstream surface. Query parameters are denied by default and must be listed by exact key.
+`WEB_RELAY_ALLOWED_USER_EMAILS` and `WEB_RELAY_ALLOWED_PATH_PREFIXES` are required when the mirror is enabled. User emails are exact, case-insensitive matches; wildcards are not accepted. Use `/` as a path prefix only after reviewing the complete upstream surface. Query parameters are denied by default and must be listed by exact key.
 
-The mirror does not use the API client's `x-proxy-token` for browser navigation. Keep any deployment that exposes `/web/*` protected by Sites access control; owner-only access is the default deployment posture.
+## Access control
+
+The mirror does not use the API client's `x-proxy-token` for browser navigation. It authenticates the ChatGPT identity supplied by the Sites dispatcher, then checks that identity against `WEB_RELAY_ALLOWED_USER_EMAILS` before evaluating path or query policy or injecting upstream credentials.
+
+- An anonymous top-level document navigation redirects to the dispatcher-owned `/signin-with-chatgpt` flow.
+- Anonymous image, stylesheet, font, and `HEAD` requests return 401 instead of following a sign-in redirect as if it were a resource.
+- A signed-in user outside the allowlist receives 403. Responses never echo the submitted identity or configured allowlist.
+
+Keep deployments that expose `/web/*` protected by Sites access control; owner-only access is the default deployment posture. The identity header is trusted only when the request passes through the Sites dispatcher. In local development or a direct Worker request that bypasses the dispatcher, an ordinary client can forge that header.
 
 ## Request contract
 
 - Only `GET` and `HEAD` are accepted. `POST`, form submissions, CORS preflight, and other methods are rejected.
+- Authentication and exact-email authorization happen before path and query policy checks.
 - `/web/path` maps to `/path` on `PROXY_UPSTREAM_ORIGIN`.
 - The decoded path must match `WEB_RELAY_ALLOWED_PATH_PREFIXES`.
 - Every query parameter must match `WEB_RELAY_ALLOWED_QUERY_KEYS`.

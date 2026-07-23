@@ -30,6 +30,7 @@ export type ProxyRouteRule = {
 export type WebRelayConfig = {
   allowedPathPrefixes: readonly string[];
   allowedQueryKeys: readonly string[];
+  allowedUserEmails: readonly string[];
   enabled: boolean;
 };
 
@@ -38,6 +39,7 @@ export type ProxyConfig = {
   allowedOrigins: readonly string[];
   allowedQueryKeys: readonly string[];
   allowedRoutes: readonly ProxyRouteRule[];
+  exposeUpstreamHost: boolean;
   upstreamAuthorization: string | null;
   upstreamOrigin: string;
   upstreamHost: string;
@@ -68,6 +70,7 @@ export type ProxyPublicStatus = {
   upstreamHost: string | null;
   webRelayEnabled: boolean;
   webRelayPathCount: number;
+  webRelayUserAllowlistConfigured: boolean;
 };
 
 export function readProxyConfig(
@@ -102,6 +105,12 @@ export function readProxyConfig(
   const accessToken = clean(runtimeEnv.PROXY_ACCESS_TOKEN)!;
   const upstreamAuthorization =
     clean(runtimeEnv.PROXY_UPSTREAM_AUTHORIZATION) ?? null;
+  const exposeUpstreamHost = parseBoolean(
+    runtimeEnv.EXPOSE_UPSTREAM_HOST,
+    "EXPOSE_UPSTREAM_HOST",
+    false,
+    issues,
+  );
   const webRelayEnabled = parseBoolean(
     runtimeEnv.WEB_RELAY_ENABLED,
     "WEB_RELAY_ENABLED",
@@ -112,6 +121,12 @@ export function readProxyConfig(
     ? parsePathPrefixes(
         runtimeEnv.WEB_RELAY_ALLOWED_PATH_PREFIXES,
         "WEB_RELAY_ALLOWED_PATH_PREFIXES",
+        issues,
+      )
+    : [];
+  const webRelayAllowedUserEmails = webRelayEnabled
+    ? parseAllowedUserEmails(
+        runtimeEnv.WEB_RELAY_ALLOWED_USER_EMAILS,
         issues,
       )
     : [];
@@ -152,12 +167,14 @@ export function readProxyConfig(
       allowedOrigins,
       allowedQueryKeys,
       allowedRoutes,
+      exposeUpstreamHost,
       upstreamAuthorization,
       upstreamOrigin: upstreamOrigin.origin,
       upstreamHost: upstreamOrigin.host,
       webRelay: {
         allowedPathPrefixes: webRelayPathPrefixes,
         allowedQueryKeys: webRelayQueryKeys,
+        allowedUserEmails: webRelayAllowedUserEmails,
         enabled: webRelayEnabled,
       },
     },
@@ -177,13 +194,19 @@ export function getProxyPublicStatus(
     missing: result.state === "setup_required" ? result.missing : [],
     state: result.state,
     upstreamConfigured: Boolean(clean(runtimeEnv.PROXY_UPSTREAM_ORIGIN)),
-    upstreamHost: result.state === "ready" ? result.config.upstreamHost : null,
+    upstreamHost:
+      result.state === "ready" && result.config.exposeUpstreamHost
+        ? result.config.upstreamHost
+        : null,
     webRelayEnabled:
       result.state === "ready" && result.config.webRelay.enabled,
     webRelayPathCount:
       result.state === "ready"
         ? result.config.webRelay.allowedPathPrefixes.length
         : 0,
+    webRelayUserAllowlistConfigured:
+      result.state === "ready" &&
+      result.config.webRelay.allowedUserEmails.length > 0,
   };
 }
 
@@ -374,6 +397,36 @@ function parseAllowedQueryKeys(
   return keys;
 }
 
+function parseAllowedUserEmails(
+  value: string | undefined,
+  issues: string[],
+): string[] {
+  const variableName = "WEB_RELAY_ALLOWED_USER_EMAILS";
+  const rawValue = clean(value);
+  if (!rawValue) {
+    issues.push(
+      `${variableName} must contain at least one exact email address when the static web mirror is enabled.`,
+    );
+    return [];
+  }
+  if (rawValue.split(",").some((item) => !item.trim())) {
+    issues.push(`${variableName} contains an empty email entry.`);
+    return [];
+  }
+
+  const items = splitCsv(rawValue);
+  const emails: string[] = [];
+  for (const item of items) {
+    const normalized = item.toLowerCase();
+    if (!isExactEmailIdentifier(normalized)) {
+      issues.push(`${variableName} contains an invalid email address.`);
+      continue;
+    }
+    if (!emails.includes(normalized)) emails.push(normalized);
+  }
+  return emails;
+}
+
 function parseBoolean(
   value: string | undefined,
   variableName: string,
@@ -423,6 +476,43 @@ function parseAllowedOrigins(
   }
 
   return origins;
+}
+
+function isExactEmailIdentifier(value: string): boolean {
+  if (
+    value.length > 254 ||
+    value.includes("*") ||
+    /[\u0000-\u0020\u007f]/.test(value)
+  ) {
+    return false;
+  }
+
+  const separator = value.indexOf("@");
+  if (
+    separator <= 0 ||
+    separator !== value.lastIndexOf("@") ||
+    separator > 64 ||
+    separator === value.length - 1
+  ) {
+    return false;
+  }
+
+  const localPart = value.slice(0, separator);
+  const domain = value.slice(separator + 1);
+  const domainLabels = domain.split(".");
+  return (
+    !localPart.startsWith(".") &&
+    !localPart.endsWith(".") &&
+    !localPart.includes("..") &&
+    !/["(),:;<>[\]\\]/.test(localPart) &&
+    domain.length <= 253 &&
+    !domain.startsWith(".") &&
+    !domain.endsWith(".") &&
+    !domain.includes("..") &&
+    domainLabels.every((label) =>
+      /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label),
+    )
+  );
 }
 
 function splitCsv(value: string | undefined): string[] {

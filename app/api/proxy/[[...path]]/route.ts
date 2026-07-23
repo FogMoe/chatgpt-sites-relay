@@ -266,6 +266,9 @@ async function handleProxyRequest(
     cors,
     requestId,
   );
+  if (hasNoBody) {
+    await upstreamResponse.body?.cancel();
+  }
   const responseBody =
     hasNoBody || !upstreamResponse.body
       ? null
