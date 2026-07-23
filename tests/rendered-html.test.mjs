@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import { access, readFile } from "node:fs/promises";
 import test from "node:test";
+import {
+  clearTimeout as clearReferencedTimeout,
+  setTimeout as setReferencedTimeout,
+} from "node:timers";
 
 const templateRoot = new URL("../", import.meta.url);
 const workerUrl = new URL("../dist/server/index.js", import.meta.url);
@@ -74,6 +78,22 @@ async function webRequest(path, init, env = webReadyEnv) {
     headers.set("oai-authenticated-user-email", webUserEmail);
   }
   return request(path, { ...init, headers }, env);
+}
+
+async function withEventLoopGuard(promise, label) {
+  let guard;
+  const guardFailure = new Promise((_, reject) => {
+    guard = setReferencedTimeout(
+      () => reject(new Error(`${label} did not settle within 1 second.`)),
+      1_000,
+    );
+  });
+
+  try {
+    return await Promise.race([promise, guardFailure]);
+  } finally {
+    clearReferencedTimeout(guard);
+  }
 }
 
 async function withProxyEnv(values, run) {
@@ -736,9 +756,12 @@ test("enforces upstream connection and streamed-response timeouts", async () => 
       readyEnv,
     );
     assert.equal(responseTimeout.status, 200);
-    await assert.rejects(
-      responseTimeout.text(),
-      /upstream response exceeded the relay time limit/i,
+    await withEventLoopGuard(
+      assert.rejects(
+        responseTimeout.text(),
+        /upstream response exceeded the relay time limit/i,
+      ),
+      "Streamed API timeout assertion",
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -1058,7 +1081,10 @@ test("enforces static mirror response metadata, size, and time limits", async ()
         }),
         { headers: { "content-type": "text/html; charset=utf-8" } },
       );
-    const timedOut = await webRequest("/web/docs");
+    const timedOut = await withEventLoopGuard(
+      webRequest("/web/docs"),
+      "Static mirror timeout request",
+    );
     assert.equal(timedOut.status, 504);
     assert.equal(
       (await timedOut.json()).error,
