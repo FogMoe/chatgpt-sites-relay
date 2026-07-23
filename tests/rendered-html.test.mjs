@@ -1343,6 +1343,8 @@ test("removes the disposable starter surface and keeps project metadata", async 
     readmeZh,
     contributing,
     contributingZh,
+    customDomain,
+    customDomainZh,
     staticWebMirror,
     staticWebMirrorZh,
     webCompatibilityDirection,
@@ -1362,6 +1364,11 @@ test("removes the disposable starter surface and keeps project metadata", async 
     readFile(new URL("../docs/CONTRIBUTING.md", import.meta.url), "utf8"),
     readFile(
       new URL("../docs/CONTRIBUTING.zh-CN.md", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../docs/custom-domain.md", import.meta.url), "utf8"),
+    readFile(
+      new URL("../docs/custom-domain.zh-CN.md", import.meta.url),
       "utf8",
     ),
     readFile(new URL("../docs/static-web-mirror.md", import.meta.url), "utf8"),
@@ -1458,6 +1465,21 @@ test("removes the disposable starter surface and keeps project metadata", async 
     /\[英文\]\(\.\/CONTRIBUTING\.md\) \| 简体中文/,
   );
   assert.doesNotMatch(contributingZh, /\[简体中文\]\(/);
+  assert.match(customDomain, /near one-click/i);
+  assert.match(customDomain, /active user in the Site's workspace/);
+  assert.match(
+    customDomain,
+    /English \| \[Chinese\]\(\.\/custom-domain\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(customDomain, /\[English\]\(/);
+  assert.doesNotMatch(customDomain, /[\u3400-\u9fff]/);
+  assert.match(customDomainZh, /# 自定义域名配置/);
+  assert.match(customDomainZh, /workspace 中的 active user/);
+  assert.match(
+    customDomainZh,
+    /\[英文\]\(\.\/custom-domain\.md\) \| 简体中文/,
+  );
+  assert.doesNotMatch(customDomainZh, /\[简体中文\]\(/);
   assert.match(staticWebMirror, /disabled by default/);
   assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_PATH_PREFIXES/);
   assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_USER_EMAILS/);
@@ -1515,11 +1537,14 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.match(ciWorkflow, /npm test/);
   assert.match(agents, /Use npm and preserve `package-lock\.json`/);
   assert.match(agents, /docs\/static-web-mirror\.md/);
+  assert.match(agents, /docs\/custom-domain\.md/);
   assert.doesNotMatch(agents, /[^\x00-\x7f]/);
   assert.match(repositorySkill, /name: operate-sites-relay/);
   assert.match(repositorySkill, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(repositorySkill, /EXPOSE_UPSTREAM_HOST/);
   assert.match(repositorySkill, /## Deploy to Sites/);
+  assert.match(repositorySkill, /## Manage custom domains/);
+  assert.match(repositorySkill, /## Manage site access/);
   assert.doesNotMatch(repositorySkill, /[^\x00-\x7f]/);
   assert.match(skillMetadata, /\$operate-sites-relay/);
   assert.doesNotMatch(skillMetadata, /[^\x00-\x7f]/);
@@ -1530,6 +1555,11 @@ test("removes the disposable starter surface and keeps project metadata", async 
     assertLocalMarkdownLinksExist(
       "docs/CONTRIBUTING.zh-CN.md",
       contributingZh,
+    ),
+    assertLocalMarkdownLinksExist("docs/custom-domain.md", customDomain),
+    assertLocalMarkdownLinksExist(
+      "docs/custom-domain.zh-CN.md",
+      customDomainZh,
     ),
     assertLocalMarkdownLinksExist(
       "docs/static-web-mirror.md",

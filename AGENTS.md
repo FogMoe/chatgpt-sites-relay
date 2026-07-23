@@ -14,8 +14,9 @@ Sites Relay is a ChatGPT Sites application for one server-configured HTTPS upstr
 2. `docs/README.zh-CN.md` when changing translated copy
 3. `docs/static-web-mirror.md` for `/web/*`
 4. `docs/web-compatibility-direction.md` for future browser work
-5. `.agents/skills/operate-sites-relay/SKILL.md`
-6. Relevant source, tests, and `git status --short`
+5. `docs/custom-domain.md` for Sites domain binding and named-user access
+6. `.agents/skills/operate-sites-relay/SKILL.md`
+7. Relevant source, tests, and `git status --short`
 
 ## Ground rules
 
