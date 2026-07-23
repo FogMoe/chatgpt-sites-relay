@@ -1,0 +1,4 @@
+interface:
+  display_name: "Sites Relay Operations"
+  short_description: "Understand, validate, and safely deploy Sites Relay"
+  default_prompt: "Use $operate-sites-relay to inspect, validate, and deploy this Sites Relay project safely."
