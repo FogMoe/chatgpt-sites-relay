@@ -1,6 +1,5 @@
 const REQUIRED_ENV = [
   "PROXY_UPSTREAM_ORIGIN",
-  "PROXY_ACCESS_TOKEN",
   "PROXY_ALLOWED_ROUTES",
 ] as const;
 
@@ -9,6 +8,7 @@ const TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,256}$/;
 const QUERY_KEY_PATTERN = /^[A-Za-z0-9_.-]{1,128}$/;
 
 export const PROXY_METHODS = ["GET", "HEAD", "POST"] as const;
+export const PROXY_AUTH_MODES = ["token", "sites-user"] as const;
 export const WEB_RELAY_METHODS = ["GET", "HEAD"] as const;
 export const MAX_REQUEST_BODY_BYTES = 1_048_576;
 export const MAX_JSON_RESPONSE_BYTES = 8_388_608;
@@ -21,6 +21,7 @@ export const SSE_RESPONSE_TIMEOUT_MS = 900_000;
 export const WEB_RESPONSE_TIMEOUT_MS = 60_000;
 
 export type ProxyMethod = (typeof PROXY_METHODS)[number];
+export type ProxyAuthMode = (typeof PROXY_AUTH_MODES)[number];
 
 export type ProxyRouteRule = {
   method: ProxyMethod;
@@ -35,10 +36,12 @@ export type WebRelayConfig = {
 };
 
 export type ProxyConfig = {
-  accessToken: string;
+  accessToken: string | null;
   allowedOrigins: readonly string[];
   allowedQueryKeys: readonly string[];
   allowedRoutes: readonly ProxyRouteRule[];
+  allowedUserEmails: readonly string[];
+  authMode: ProxyAuthMode;
   exposeUpstreamHost: boolean;
   upstreamAuthorization: string | null;
   upstreamOrigin: string;
@@ -63,8 +66,10 @@ export type ProxyConfigResult =
 export type ProxyPublicStatus = {
   accessTokenConfigured: boolean;
   allowedRouteCount: number;
+  authMode: ProxyAuthMode | null;
   issues: readonly string[];
   missing: readonly string[];
+  proxyUserAllowlistConfigured: boolean;
   state: ProxyConfigResult["state"];
   upstreamConfigured: boolean;
   upstreamHost: string | null;
@@ -76,7 +81,24 @@ export type ProxyPublicStatus = {
 export function readProxyConfig(
   runtimeEnv: Record<string, string | undefined> = process.env,
 ): ProxyConfigResult {
-  const missing = REQUIRED_ENV.filter((name) => !clean(runtimeEnv[name]));
+  const requestedAuthMode = parseRequestedAuthMode(
+    runtimeEnv.PROXY_AUTH_MODE,
+  );
+  const missing: string[] = [...REQUIRED_ENV].filter(
+    (name) => !clean(runtimeEnv[name]),
+  );
+  if (
+    requestedAuthMode === "token" &&
+    !clean(runtimeEnv.PROXY_ACCESS_TOKEN)
+  ) {
+    missing.push("PROXY_ACCESS_TOKEN");
+  }
+  if (
+    requestedAuthMode === "sites-user" &&
+    !clean(runtimeEnv.PROXY_ALLOWED_USER_EMAILS)
+  ) {
+    missing.push("PROXY_ALLOWED_USER_EMAILS");
+  }
   if (missing.length > 0) {
     return {
       state: "setup_required",
@@ -85,6 +107,7 @@ export function readProxyConfig(
   }
 
   const issues: string[] = [];
+  const authMode = parseAuthMode(runtimeEnv.PROXY_AUTH_MODE, issues);
   const upstreamOrigin = parseUpstreamOrigin(
     runtimeEnv.PROXY_UPSTREAM_ORIGIN!,
     issues,
@@ -102,7 +125,16 @@ export function readProxyConfig(
     runtimeEnv.PROXY_ALLOWED_ORIGINS,
     issues,
   );
-  const accessToken = clean(runtimeEnv.PROXY_ACCESS_TOKEN)!;
+  const accessToken =
+    authMode === "token" ? clean(runtimeEnv.PROXY_ACCESS_TOKEN)! : null;
+  const allowedUserEmails =
+    authMode === "sites-user"
+      ? parseAllowedUserEmails(
+          runtimeEnv.PROXY_ALLOWED_USER_EMAILS,
+          "PROXY_ALLOWED_USER_EMAILS",
+          issues,
+        )
+      : [];
   const upstreamAuthorization =
     clean(runtimeEnv.PROXY_UPSTREAM_AUTHORIZATION) ?? null;
   const exposeUpstreamHost = parseBoolean(
@@ -127,6 +159,7 @@ export function readProxyConfig(
   const webRelayAllowedUserEmails = webRelayEnabled
     ? parseAllowedUserEmails(
         runtimeEnv.WEB_RELAY_ALLOWED_USER_EMAILS,
+        "WEB_RELAY_ALLOWED_USER_EMAILS",
         issues,
       )
     : [];
@@ -138,7 +171,7 @@ export function readProxyConfig(
       )
     : [];
 
-  if (!isStrongAccessToken(accessToken)) {
+  if (authMode === "token" && !isStrongAccessToken(accessToken ?? "")) {
     issues.push(
       "PROXY_ACCESS_TOKEN must be a random base64url string containing 32 to 256 characters.",
     );
@@ -153,7 +186,7 @@ export function readProxyConfig(
     );
   }
 
-  if (issues.length > 0 || !upstreamOrigin) {
+  if (issues.length > 0 || !upstreamOrigin || !authMode) {
     return {
       state: "invalid",
       issues,
@@ -167,6 +200,8 @@ export function readProxyConfig(
       allowedOrigins,
       allowedQueryKeys,
       allowedRoutes,
+      allowedUserEmails,
+      authMode,
       exposeUpstreamHost,
       upstreamAuthorization,
       upstreamOrigin: upstreamOrigin.origin,
@@ -185,13 +220,23 @@ export function getProxyPublicStatus(
   runtimeEnv: Record<string, string | undefined> = process.env,
 ): ProxyPublicStatus {
   const result = readProxyConfig(runtimeEnv);
+  const requestedAuthMode = parseRequestedAuthMode(
+    runtimeEnv.PROXY_AUTH_MODE,
+  );
 
   return {
     accessTokenConfigured: Boolean(clean(runtimeEnv.PROXY_ACCESS_TOKEN)),
     allowedRouteCount:
       result.state === "ready" ? result.config.allowedRoutes.length : 0,
+    authMode:
+      result.state === "ready"
+        ? result.config.authMode
+        : requestedAuthMode,
     issues: result.state === "invalid" ? result.issues : [],
     missing: result.state === "setup_required" ? result.missing : [],
+    proxyUserAllowlistConfigured: Boolean(
+      clean(runtimeEnv.PROXY_ALLOWED_USER_EMAILS),
+    ),
     state: result.state,
     upstreamConfigured: Boolean(clean(runtimeEnv.PROXY_UPSTREAM_ORIGIN)),
     upstreamHost:
@@ -399,13 +444,13 @@ function parseAllowedQueryKeys(
 
 function parseAllowedUserEmails(
   value: string | undefined,
+  variableName: string,
   issues: string[],
 ): string[] {
-  const variableName = "WEB_RELAY_ALLOWED_USER_EMAILS";
   const rawValue = clean(value);
   if (!rawValue) {
     issues.push(
-      `${variableName} must contain at least one exact email address when the static web mirror is enabled.`,
+      `${variableName} must contain at least one exact email address.`,
     );
     return [];
   }
@@ -425,6 +470,26 @@ function parseAllowedUserEmails(
     if (!emails.includes(normalized)) emails.push(normalized);
   }
   return emails;
+}
+
+function parseRequestedAuthMode(
+  value: string | undefined,
+): ProxyAuthMode | null {
+  const normalized = clean(value)?.toLowerCase() ?? "token";
+  return (PROXY_AUTH_MODES as readonly string[]).includes(normalized)
+    ? (normalized as ProxyAuthMode)
+    : null;
+}
+
+function parseAuthMode(
+  value: string | undefined,
+  issues: string[],
+): ProxyAuthMode | null {
+  const authMode = parseRequestedAuthMode(value);
+  if (!authMode) {
+    issues.push("PROXY_AUTH_MODE must be token or sites-user.");
+  }
+  return authMode;
 }
 
 function parseBoolean(

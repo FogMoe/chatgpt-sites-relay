@@ -267,9 +267,9 @@ nav a:hover {
 
 .hero-description span,
 .section-intro > p span,
+.use-case-card p span,
 .guardrail-card p span,
-.setup-list p span,
-.boundary-note p span {
+.setup-list p span {
   color: var(--muted);
   display: block;
   font-size: 0.9em;
@@ -642,10 +642,87 @@ nav a:hover {
   margin-top: 10px;
 }
 
+.use-cases-section,
 .example-section,
 .guardrails-section {
   padding-block: 128px;
   position: relative;
+}
+
+.use-cases-section {
+  border-bottom: 1px solid var(--line);
+}
+
+.use-case-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 58px;
+}
+
+.use-case-card {
+  background:
+    linear-gradient(145deg, rgba(116, 232, 181, 0.055), transparent 58%),
+    rgba(13, 27, 22, 0.62);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  min-height: 250px;
+  padding: 25px;
+}
+
+.use-case-index {
+  color: var(--mint);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+}
+
+.use-case-card h3 {
+  color: var(--ink-strong);
+  font-size: 20px;
+  font-weight: 580;
+  letter-spacing: -0.03em;
+  margin: 60px 0 0;
+}
+
+.use-case-card h3 span {
+  color: var(--muted);
+  display: block;
+  font-size: 11px;
+  font-weight: 450;
+  margin-top: 5px;
+}
+
+.use-case-card p {
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.65;
+  margin: 18px 0 0;
+}
+
+.fit-note {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  margin-top: 18px;
+  overflow: hidden;
+}
+
+.fit-note p {
+  background: rgba(13, 27, 22, 0.62);
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.7;
+  margin: 0;
+  padding: 18px 20px;
+}
+
+.fit-note strong {
+  color: var(--ink-strong);
+}
+
+.fit-note span {
+  color: var(--muted);
+  display: block;
+  margin-top: 5px;
 }
 
 .section-intro {
@@ -845,34 +922,6 @@ nav a:hover {
   margin: 18px 0 0;
 }
 
-.boundary-note {
-  align-items: flex-start;
-  background: rgba(244, 186, 106, 0.06);
-  border: 1px solid rgba(244, 186, 106, 0.18);
-  border-radius: 14px;
-  display: flex;
-  gap: 15px;
-  margin-top: 18px;
-  padding: 18px 20px;
-}
-
-.boundary-icon {
-  color: var(--amber);
-  font-family: var(--font-geist-mono), monospace;
-  margin-top: 2px;
-}
-
-.boundary-note p {
-  color: var(--muted-strong);
-  font-size: 12px;
-  line-height: 1.65;
-  margin: 0;
-}
-
-.boundary-note strong {
-  color: var(--amber);
-}
-
 .setup-section {
   background:
     radial-gradient(circle at 80% 30%, rgba(116, 232, 181, 0.07), transparent 27rem),
@@ -981,6 +1030,10 @@ nav a:hover {
   font-size: 10px;
 }
 
+.footer-links {
+  justify-self: end;
+}
+
 @media (max-width: 1080px) {
   .hero {
     gap: 38px;
@@ -993,6 +1046,10 @@ nav a:hover {
 
   .guardrail-grid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .use-case-grid {
+    grid-template-columns: repeat(3, 1fr);
   }
 
   .guardrail-card {
@@ -1051,6 +1108,18 @@ nav a:hover {
   .code-layout,
   .setup-inner {
     grid-template-columns: 1fr;
+  }
+
+  .use-case-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .use-case-card {
+    min-height: 210px;
+  }
+
+  .use-case-card h3 {
+    margin-top: 42px;
   }
 
   .setup-inner {
@@ -1165,6 +1234,7 @@ nav a:hover {
     padding: 21px 16px;
   }
 
+  .use-cases-section,
   .example-section,
   .guardrails-section {
     padding-block: 88px;

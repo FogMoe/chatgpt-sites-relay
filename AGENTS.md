@@ -4,7 +4,7 @@
 
 Sites Relay is a ChatGPT Sites application for one server-configured HTTPS upstream.
 
-- `/api/proxy/*` is a token-protected JSON/SSE API relay with method, path, query, size, type, and timeout limits.
+- `/api/proxy/*` is a JSON/SSE API relay with token or exact Sites-user authentication plus method, path, query, size, type, and timeout limits.
 - `/web/*` is an optional read-only static mirror of that same upstream. It supports only GET/HEAD and removes active content.
 - Arbitrary public-URL browsing with JavaScript, cookies, APIs, and forms is a future Browser Relay architecture, not current behavior.
 
@@ -13,10 +13,12 @@ Sites Relay is a ChatGPT Sites application for one server-configured HTTPS upstr
 1. `README.md`
 2. `docs/README.zh-CN.md` when changing translated copy
 3. `docs/static-web-mirror.md` for `/web/*`
-4. `docs/web-compatibility-direction.md` for future browser work
-5. `docs/custom-domain.md` for Sites domain binding and named-user access
-6. `.agents/skills/operate-sites-relay/SKILL.md`
-7. Relevant source, tests, and `git status --short`
+4. `docs/examples.md` for supported client patterns
+5. `docs/roadmap.md` for product direction and scope
+6. `docs/web-compatibility-direction.md` for future browser work
+7. `docs/custom-domain.md` for Sites domain binding and named-user access
+8. `.agents/skills/operate-sites-relay/SKILL.md`
+9. Relevant source, tests, and `git status --short`
 
 ## Ground rules
 

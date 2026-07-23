@@ -26,7 +26,7 @@ The existing fixed-upstream, read-only static mirror is documented separately in
 Node.js 22.13.0 or later is required.
 
 ```powershell
-git clone https://github.com/scarletkc/chatgpt-sites-relay.git
+git clone https://github.com/FogMoe/chatgpt-sites-relay.git
 Set-Location chatgpt-sites-relay
 npm ci
 Copy-Item .env.example .env.local
@@ -34,6 +34,8 @@ npm run dev
 ```
 
 In other shells, replace `Copy-Item` with `cp`. Configure local values from `.env.example`; never commit `.env.local`, access tokens, upstream credentials, or private service URLs. When runtime configuration is missing, the UI and `/api/health` should report that state explicitly instead of silently weakening policy.
+
+Use the repository's structured Issue forms for reproducible bugs and scoped feature requests. Report suspected vulnerabilities privately through the [security policy](../.github/SECURITY.md).
 
 ## Change requirements
 

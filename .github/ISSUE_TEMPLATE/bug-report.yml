@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible Sites Relay defect without including secrets.
+title: "bug: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping improve Sites Relay. Redact every token, credential, private host, user email, and sensitive response body.
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Commit SHA, tag, or branch where the issue occurs.
+      placeholder: e1d6a85 or main
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - API relay
+        - Static web mirror
+        - Authentication or access control
+        - Health or configuration
+        - User interface or documentation
+        - Build, CI, or deployment
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Use placeholder hosts and redacted runtime values.
+      placeholder: List the configuration shape, request, and exact sequence that reproduces the problem.
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed real tokens, credentials, private URLs, user emails, and sensitive response data.
+          required: true
+        - label: This is not a private security report. I will use the security advisory link for suspected vulnerabilities.
+          required: true

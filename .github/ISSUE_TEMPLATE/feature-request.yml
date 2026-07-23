@@ -1,0 +1,48 @@
+name: Feature request
+description: Propose a concrete Sites use case that preserves the fixed-upstream boundary.
+title: "feat: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Sites Relay keeps destinations server-controlled. Describe how the proposed capability preserves that boundary and fails closed.
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Sites use case
+      description: Describe who needs the capability and what they are trying to accomplish.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: Explain the smallest observable behavior that would solve the use case.
+    validations:
+      required: true
+
+  - type: textarea
+    id: boundary
+    attributes:
+      label: Security boundary
+      description: Explain how the destination remains server-configured and how the behavior can fail closed.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Could documentation, an example, an adapter, or a separate project solve this instead?
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Scope confirmation
+      options:
+        - label: The client will not select an arbitrary upstream URL.
+          required: true

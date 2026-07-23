@@ -26,6 +26,11 @@ export async function GET(): Promise<Response> {
       upstreamConfigured: status.upstreamConfigured,
       upstreamHost: status.upstreamHost,
       accessTokenConfigured: status.accessTokenConfigured,
+      authentication: {
+        mode: status.authMode,
+        userAllowlistConfigured:
+          status.proxyUserAllowlistConfigured,
+      },
       allowedRouteCount: status.allowedRouteCount,
       supportedMethods: PROXY_METHODS,
       preflightMethod: "OPTIONS",

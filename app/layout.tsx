@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 
 const title = "Sites Relay · API 中继与静态网页镜像";
 const description =
-  "A bilingual, fixed-upstream API relay and optional static web mirror for ChatGPT Sites. ChatGPT Sites 双语固定上游 API 中继与可选静态网页镜像。";
+  "A policy-constrained, fixed-upstream relay for ChatGPT Sites, with JSON/SSE streaming and an optional sanitized static web mirror.";
 
 export async function generateMetadata(): Promise<Metadata> {
   const requestHeaders = await headers();
@@ -27,10 +27,22 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title,
     description,
+    applicationName: "Sites Relay",
+    category: "developer tools",
+    keywords: [
+      "ChatGPT Sites",
+      "API relay",
+      "JSON API",
+      "Server-Sent Events",
+      "SSE",
+      "static web mirror",
+      "fixed upstream",
+    ],
     metadataBase: baseUrl,
     openGraph: {
       title,
       description,
+      siteName: "Sites Relay",
       images: socialImage
         ? [
             {

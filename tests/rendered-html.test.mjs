@@ -14,9 +14,11 @@ const { default: worker } = await import(workerUrl.href);
 const proxyEnvKeys = [
   "EXPOSE_UPSTREAM_HOST",
   "PROXY_ACCESS_TOKEN",
+  "PROXY_ALLOWED_USER_EMAILS",
   "PROXY_ALLOWED_ORIGINS",
   "PROXY_ALLOWED_QUERY_KEYS",
   "PROXY_ALLOWED_ROUTES",
+  "PROXY_AUTH_MODE",
   "PROXY_UPSTREAM_AUTHORIZATION",
   "PROXY_UPSTREAM_ORIGIN",
   "WEB_RELAY_ALLOWED_PATH_PREFIXES",
@@ -26,6 +28,7 @@ const proxyEnvKeys = [
 ];
 
 const webUserEmail = "owner@example.com";
+const apiUserEmail = "api-owner@example.com";
 
 const readyEnv = {
   PROXY_ACCESS_TOKEN: "sR7pQ2mX9vK4nD8cL1aF6wY3tB5hJ0uE",
@@ -41,6 +44,15 @@ const webReadyEnv = {
   WEB_RELAY_ALLOWED_QUERY_KEYS: "v",
   WEB_RELAY_ALLOWED_USER_EMAILS: webUserEmail,
   WEB_RELAY_ENABLED: "true",
+};
+
+const sitesUserReadyEnv = {
+  PROXY_ALLOWED_ROUTES:
+    "GET:/v1/models,GET:/v1/responses,POST:/v1/responses",
+  PROXY_ALLOWED_USER_EMAILS: apiUserEmail,
+  PROXY_AUTH_MODE: "sites-user",
+  PROXY_UPSTREAM_AUTHORIZATION: "Bearer upstream-secret",
+  PROXY_UPSTREAM_ORIGIN: "https://api.example.com",
 };
 
 const workerBindings = {
@@ -148,9 +160,13 @@ test("server-renders the finished bilingual product page", async () => {
   );
   assert.match(html, /把一个受控上游/);
   assert.match(html, /Connect one controlled upstream through Sites/);
-  assert.match(html, /STATIC WEB RELAY/);
+  assert.match(html, /POLICY-CONSTRAINED/);
+  assert.match(html, /Streaming AI apps/);
+  assert.match(html, /Three practical uses/);
   assert.match(html, /网页镜像/);
   assert.match(html, /WEB_RELAY_\*/);
+  assert.match(html, /PROXY_AUTH_MODE/);
+  assert.match(html, /github\.com\/FogMoe\/chatgpt-sites-relay/);
   assert.match(html, /等待配置/);
   assert.match(html, /Setup required/);
   assert.match(html, /\/api\/proxy\/\*/);
@@ -179,6 +195,8 @@ test("reports setup-required state without exposing runtime secrets", async () =
   assert.equal(payload.maxWebAssetBytes, 20_971_520);
   assert.equal(payload.webRelay.enabled, false);
   assert.deepEqual(payload.webRelay.supportedMethods, ["GET", "HEAD"]);
+  assert.equal(payload.authentication.mode, "token");
+  assert.equal(payload.authentication.userAllowlistConfigured, false);
   assert.equal(JSON.stringify(payload).includes("upstream-secret"), false);
 });
 
@@ -191,6 +209,20 @@ test("fails closed until all proxy runtime values are present", async () => {
     error: "proxy_not_configured",
     message: "Proxy runtime values are not configured.",
   });
+
+  const missingSitesUserAllowlist = await request(
+    "/api/health",
+    undefined,
+    {
+      PROXY_ALLOWED_ROUTES: readyEnv.PROXY_ALLOWED_ROUTES,
+      PROXY_AUTH_MODE: "sites-user",
+      PROXY_UPSTREAM_ORIGIN: readyEnv.PROXY_UPSTREAM_ORIGIN,
+    },
+  );
+  const missingPayload = await missingSitesUserAllowlist.json();
+  assert.equal(missingSitesUserAllowlist.status, 503);
+  assert.equal(missingPayload.status, "setup_required");
+  assert.deepEqual(missingPayload.missing, ["PROXY_ALLOWED_USER_EMAILS"]);
 });
 
 test("reports a statically valid configuration without claiming reachability", async () => {
@@ -201,6 +233,8 @@ test("reports a statically valid configuration without claiming reachability", a
   assert.equal(payload.status, "ready");
   assert.equal(payload.upstreamHost, null);
   assert.equal(payload.accessTokenConfigured, true);
+  assert.equal(payload.authentication.mode, "token");
+  assert.equal(payload.authentication.userAllowlistConfigured, false);
   assert.equal(payload.allowedRouteCount, 3);
   assert.equal(payload.reachability, "not_checked");
   assert.equal(payload.webRelay.enabled, false);
@@ -216,6 +250,21 @@ test("reports a statically valid configuration without claiming reachability", a
     "sites_access_control_and_user_allowlist",
   );
   assert.doesNotMatch(JSON.stringify(webPayload), /owner@example\.com/);
+
+  const sitesUserResponse = await request(
+    "/api/health",
+    undefined,
+    sitesUserReadyEnv,
+  );
+  const sitesUserPayload = await sitesUserResponse.json();
+  assert.equal(sitesUserResponse.status, 200);
+  assert.equal(sitesUserPayload.accessTokenConfigured, false);
+  assert.equal(sitesUserPayload.authentication.mode, "sites-user");
+  assert.equal(
+    sitesUserPayload.authentication.userAllowlistConfigured,
+    true,
+  );
+  assert.doesNotMatch(JSON.stringify(sitesUserPayload), /api-owner@example\.com/);
 
   const webPage = await request("/", undefined, webReadyEnv);
   assert.doesNotMatch(await webPage.text(), /owner@example\.com/);
@@ -259,6 +308,9 @@ test("does not echo invalid runtime values from the health endpoint", async () =
 test("rejects placeholder secrets and unsafe runtime values", async () => {
   const cases = [
     {
+      PROXY_AUTH_MODE: "shared-secret",
+    },
+    {
       PROXY_ACCESS_TOKEN: "replace-with-a-long-random-token",
     },
     {
@@ -283,6 +335,15 @@ test("rejects placeholder secrets and unsafe runtime values", async () => {
       WEB_RELAY_ALLOWED_USER_EMAILS:
         "owner@example.com,,second@example.com",
       WEB_RELAY_ENABLED: "true",
+    },
+    {
+      PROXY_ALLOWED_USER_EMAILS: "*",
+      PROXY_AUTH_MODE: "sites-user",
+    },
+    {
+      PROXY_ALLOWED_USER_EMAILS:
+        "owner@example.com,,second@example.com",
+      PROXY_AUTH_MODE: "sites-user",
     },
   ];
 
@@ -338,6 +399,77 @@ test("authenticates before applying route policy and rejects encoded paths", asy
     );
     assert.equal(doubleEncodedDotSegment.status, 400);
     assert.equal(upstreamCalls, 0);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("supports exact Sites-user authentication before route policy", async () => {
+  let upstreamCalls = 0;
+  let upstreamIdentityHeader = null;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, init) => {
+    upstreamCalls += 1;
+    const upstreamRequest = new Request(input, init);
+    upstreamIdentityHeader = upstreamRequest.headers.get(
+      "oai-authenticated-user-email",
+    );
+    return Response.json({ ok: true });
+  };
+
+  try {
+    const anonymous = await request(
+      "/api/proxy/admin",
+      {
+        headers: {
+          "x-proxy-token": readyEnv.PROXY_ACCESS_TOKEN,
+        },
+      },
+      sitesUserReadyEnv,
+    );
+    assert.equal(anonymous.status, 401);
+    assert.equal(
+      (await anonymous.json()).error,
+      "proxy_authentication_required",
+    );
+
+    const disallowed = await request(
+      "/api/proxy/admin",
+      {
+        headers: {
+          "oai-authenticated-user-email": "other@example.com",
+        },
+      },
+      sitesUserReadyEnv,
+    );
+    assert.equal(disallowed.status, 403);
+    assert.equal((await disallowed.json()).error, "proxy_user_not_allowed");
+
+    const forbidden = await request(
+      "/api/proxy/admin",
+      {
+        headers: {
+          "oai-authenticated-user-email": apiUserEmail.toUpperCase(),
+        },
+      },
+      sitesUserReadyEnv,
+    );
+    assert.equal(forbidden.status, 403);
+    assert.equal((await forbidden.json()).error, "route_not_allowed");
+
+    const allowed = await request(
+      "/api/proxy/v1/models",
+      {
+        headers: {
+          "oai-authenticated-user-email": apiUserEmail.toUpperCase(),
+        },
+      },
+      sitesUserReadyEnv,
+    );
+    assert.equal(allowed.status, 200);
+    assert.deepEqual(await allowed.json(), { ok: true });
+    assert.equal(upstreamCalls, 1);
+    assert.equal(upstreamIdentityHeader, null);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1345,8 +1477,17 @@ test("removes the disposable starter surface and keeps project metadata", async 
     contributingZh,
     customDomain,
     customDomainZh,
+    examples,
+    examplesZh,
+    roadmap,
+    roadmapZh,
     staticWebMirror,
     staticWebMirrorZh,
+    security,
+    securityZh,
+    bugReportForm,
+    featureRequestForm,
+    pullRequestTemplate,
     webCompatibilityDirection,
     webCompatibilityDirectionZh,
     agents,
@@ -1371,9 +1512,36 @@ test("removes the disposable starter surface and keeps project metadata", async 
       new URL("../docs/custom-domain.zh-CN.md", import.meta.url),
       "utf8",
     ),
+    readFile(new URL("../docs/examples.md", import.meta.url), "utf8"),
+    readFile(new URL("../docs/examples.zh-CN.md", import.meta.url), "utf8"),
+    readFile(new URL("../docs/roadmap.md", import.meta.url), "utf8"),
+    readFile(new URL("../docs/roadmap.zh-CN.md", import.meta.url), "utf8"),
     readFile(new URL("../docs/static-web-mirror.md", import.meta.url), "utf8"),
     readFile(
       new URL("../docs/static-web-mirror.zh-CN.md", import.meta.url),
+      "utf8",
+    ),
+    readFile(new URL("../.github/SECURITY.md", import.meta.url), "utf8"),
+    readFile(
+      new URL("../.github/SECURITY.zh-CN.md", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../.github/ISSUE_TEMPLATE/bug-report.yml",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL(
+        "../.github/ISSUE_TEMPLATE/feature-request.yml",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+    readFile(
+      new URL("../.github/PULL_REQUEST_TEMPLATE.md", import.meta.url),
       "utf8",
     ),
     readFile(
@@ -1411,11 +1579,27 @@ test("removes the disposable starter surface and keeps project metadata", async 
   ]);
 
   assert.doesNotMatch(page, /_sites-preview|SkeletonPreview|codex-preview/);
+  assert.doesNotMatch(
+    page,
+    /客户端不能提交任意网址|Clients cannot supply a URL|它不是任意 URL|not arbitrary URLs|A successful deployment does not mean/,
+  );
   assert.doesNotMatch(layout, /Starter Project|favicon\.svg/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(packageJson, /"name": "sites-relay"/);
+  assert.match(packageJson, /"license": "MIT"/);
+  assert.match(
+    packageJson,
+    /github\.com\/FogMoe\/chatgpt-sites-relay/,
+  );
   assert.match(readme, /Sites Relay/);
+  assert.doesNotMatch(
+    readme,
+    /never accepts arbitrary client-supplied target URLs/,
+  );
+  assert.match(readme, /## Why Sites Relay/);
   assert.match(readme, /## Security boundaries/);
+  assert.match(readme, /PROXY_AUTH_MODE/);
+  assert.match(readme, /PROXY_ALLOWED_USER_EMAILS/);
   assert.match(readme, /EXPOSE_UPSTREAM_HOST/);
   assert.match(readme, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(
@@ -1438,6 +1622,9 @@ test("removes the disposable starter surface and keeps project metadata", async 
   );
   assert.doesNotMatch(readme, /[\u3400-\u9fff]/);
   assert.match(readmeZh, /## 安全边界/);
+  assert.doesNotMatch(readmeZh, /它不接受客户端提供的任意目标 URL/);
+  assert.match(readmeZh, /PROXY_AUTH_MODE/);
+  assert.match(readmeZh, /PROXY_ALLOWED_USER_EMAILS/);
   assert.match(readmeZh, /EXPOSE_UPSTREAM_HOST/);
   assert.match(readmeZh, /WEB_RELAY_ALLOWED_USER_EMAILS/);
   assert.match(readmeZh, /\[英文\]\(\.\.\/README\.md\) \| 简体中文/);
@@ -1467,6 +1654,10 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.doesNotMatch(contributingZh, /\[简体中文\]\(/);
   assert.match(customDomain, /near one-click/i);
   assert.match(customDomain, /active user in the Site's workspace/);
+  assert.doesNotMatch(
+    customDomain,
+    /never receives|Do not include|does not make a Site public/,
+  );
   assert.match(
     customDomain,
     /English \| \[Chinese\]\(\.\/custom-domain\.zh-CN\.md\)/,
@@ -1475,11 +1666,44 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.doesNotMatch(customDomain, /[\u3400-\u9fff]/);
   assert.match(customDomainZh, /# 自定义域名配置/);
   assert.match(customDomainZh, /workspace 中的 active user/);
+  assert.doesNotMatch(
+    customDomainZh,
+    /不会接收|不要包含|不会把 Site 改为公开/,
+  );
   assert.match(
     customDomainZh,
     /\[英文\]\(\.\/custom-domain\.md\) \| 简体中文/,
   );
   assert.doesNotMatch(customDomainZh, /\[简体中文\]\(/);
+  assert.match(examples, /## Same-origin Sites application/);
+  assert.match(examples, /PROXY_AUTH_MODE=sites-user/);
+  assert.match(
+    examples,
+    /English \| \[Chinese\]\(\.\/examples\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(examples, /\[English\]\(/);
+  assert.doesNotMatch(examples, /[\u3400-\u9fff]/);
+  assert.match(examplesZh, /# 示例/);
+  assert.match(examplesZh, /PROXY_AUTH_MODE=sites-user/);
+  assert.match(
+    examplesZh,
+    /\[英文\]\(\.\/examples\.md\) \| 简体中文/,
+  );
+  assert.doesNotMatch(examplesZh, /\[简体中文\]\(/);
+  assert.match(roadmap, /## Current release line: v0\.1/);
+  assert.match(roadmap, /## Expansion gate/);
+  assert.match(
+    roadmap,
+    /English \| \[Chinese\]\(\.\/roadmap\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(roadmap, /\[English\]\(/);
+  assert.doesNotMatch(roadmap, /[\u3400-\u9fff]/);
+  assert.match(roadmapZh, /## 当前版本线：v0\.1/);
+  assert.match(
+    roadmapZh,
+    /\[英文\]\(\.\/roadmap\.md\) \| 简体中文/,
+  );
+  assert.doesNotMatch(roadmapZh, /\[简体中文\]\(/);
   assert.match(staticWebMirror, /disabled by default/);
   assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_PATH_PREFIXES/);
   assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_USER_EMAILS/);
@@ -1497,6 +1721,23 @@ test("removes the disposable starter surface and keeps project metadata", async 
     /\[英文\]\(\.\/static-web-mirror\.md\) \| 简体中文/,
   );
   assert.doesNotMatch(staticWebMirrorZh, /\[简体中文\]\(/);
+  assert.match(security, /Report a vulnerability/);
+  assert.match(
+    security,
+    /English \| \[Chinese\]\(\.\/SECURITY\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(security, /[\u3400-\u9fff]/);
+  assert.match(securityZh, /# 安全策略/);
+  assert.match(
+    securityZh,
+    /\[英文\]\(\.\/SECURITY\.md\) \| 简体中文/,
+  );
+  assert.match(bugReportForm, /name: Bug report/);
+  assert.match(bugReportForm, /Redact every token/);
+  assert.match(featureRequestForm, /name: Feature request/);
+  assert.match(featureRequestForm, /fixed-upstream boundary/);
+  assert.match(pullRequestTemplate, /## Security boundary/);
+  assert.match(pullRequestTemplate, /Conventional Commits/);
   assert.match(
     webCompatibilityDirection,
     /Status: Architecture proposal, not implemented/,
@@ -1524,6 +1765,8 @@ test("removes the disposable starter surface and keeps project metadata", async 
   );
   assert.doesNotMatch(webCompatibilityDirectionZh, /\[简体中文\]\(/);
   assert.match(envExample, /PROXY_ALLOWED_ROUTES=/);
+  assert.match(envExample, /PROXY_AUTH_MODE=token/);
+  assert.match(envExample, /PROXY_ALLOWED_USER_EMAILS=/);
   assert.match(envExample, /EXPOSE_UPSTREAM_HOST=false/);
   assert.match(envExample, /WEB_RELAY_ENABLED=false/);
   assert.match(envExample, /WEB_RELAY_ALLOWED_USER_EMAILS=/);
@@ -1537,10 +1780,14 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.match(ciWorkflow, /npm test/);
   assert.match(agents, /Use npm and preserve `package-lock\.json`/);
   assert.match(agents, /docs\/static-web-mirror\.md/);
+  assert.match(agents, /docs\/examples\.md/);
+  assert.match(agents, /docs\/roadmap\.md/);
   assert.match(agents, /docs\/custom-domain\.md/);
   assert.doesNotMatch(agents, /[^\x00-\x7f]/);
   assert.match(repositorySkill, /name: operate-sites-relay/);
   assert.match(repositorySkill, /WEB_RELAY_ALLOWED_USER_EMAILS/);
+  assert.match(repositorySkill, /PROXY_AUTH_MODE=sites-user/);
+  assert.match(repositorySkill, /PROXY_ALLOWED_USER_EMAILS/);
   assert.match(repositorySkill, /EXPOSE_UPSTREAM_HOST/);
   assert.match(repositorySkill, /## Deploy to Sites/);
   assert.match(repositorySkill, /## Manage custom domains/);
@@ -1561,6 +1808,16 @@ test("removes the disposable starter surface and keeps project metadata", async 
       "docs/custom-domain.zh-CN.md",
       customDomainZh,
     ),
+    assertLocalMarkdownLinksExist("docs/examples.md", examples),
+    assertLocalMarkdownLinksExist(
+      "docs/examples.zh-CN.md",
+      examplesZh,
+    ),
+    assertLocalMarkdownLinksExist("docs/roadmap.md", roadmap),
+    assertLocalMarkdownLinksExist(
+      "docs/roadmap.zh-CN.md",
+      roadmapZh,
+    ),
     assertLocalMarkdownLinksExist(
       "docs/static-web-mirror.md",
       staticWebMirror,
@@ -1568,6 +1825,11 @@ test("removes the disposable starter surface and keeps project metadata", async 
     assertLocalMarkdownLinksExist(
       "docs/static-web-mirror.zh-CN.md",
       staticWebMirrorZh,
+    ),
+    assertLocalMarkdownLinksExist(".github/SECURITY.md", security),
+    assertLocalMarkdownLinksExist(
+      ".github/SECURITY.zh-CN.md",
+      securityZh,
     ),
     assertLocalMarkdownLinksExist(
       "docs/web-compatibility-direction.md",

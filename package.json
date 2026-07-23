@@ -1,7 +1,24 @@
 {
   "name": "sites-relay",
   "version": "0.1.0",
+  "description": "A policy-constrained, fixed-upstream relay for ChatGPT Sites, with JSON/SSE streaming and an optional sanitized static web mirror.",
   "private": true,
+  "license": "MIT",
+  "homepage": "https://github.com/FogMoe/chatgpt-sites-relay#readme",
+  "bugs": {
+    "url": "https://github.com/FogMoe/chatgpt-sites-relay/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/FogMoe/chatgpt-sites-relay.git"
+  },
+  "keywords": [
+    "api-relay",
+    "chatgpt-sites",
+    "json-api",
+    "server-sent-events",
+    "static-web-mirror"
+  ],
   "engines": {
     "node": ">=22.13.0"
   },

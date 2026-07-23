@@ -7,38 +7,70 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const repositoryUrl = "https://github.com/FogMoe/chatgpt-sites-relay";
+
+const useCases = [
+  {
+    index: "01",
+    titleZh: "流式 AI 应用",
+    titleEn: "Streaming AI apps",
+    copyZh:
+      "把 OpenAI 兼容或其他固定 JSON/SSE AI 接口接入 Sites，同时把上游凭据留在服务端。",
+    copyEn:
+      "Connect an OpenAI-compatible or other fixed JSON/SSE AI API while keeping upstream credentials server-side.",
+  },
+  {
+    index: "02",
+    titleZh: "私有业务 API",
+    titleEn: "Private application APIs",
+    copyZh:
+      "让仪表盘、内部工具和轻量应用访问经过方法、路径与查询策略批准的后端能力。",
+    copyEn:
+      "Give dashboards, internal tools, and lightweight apps access to approved backend methods, paths, and queries.",
+  },
+  {
+    index: "03",
+    titleZh: "只读内容镜像",
+    titleEn: "Read-only content mirrors",
+    copyZh:
+      "向指定 ChatGPT 用户提供经过净化、适合静态阅读的文档或状态页。",
+    copyEn:
+      "Share sanitized documentation or status pages as static content with named ChatGPT users.",
+  },
+] as const;
+
 const guardrails = [
   {
     index: "01",
     titleZh: "固定上游",
     titleEn: "Fixed upstream",
-    copyZh: "目标只来自 Sites 运行时配置，客户端不能提交任意网址。",
+    copyZh: "Sites 运行时配置定义唯一目标，所有请求沿同一受控路径转发。",
     copyEn:
-      "The destination comes only from Sites runtime values. Clients cannot supply a URL.",
+      "Sites runtime values define one destination for every request.",
   },
   {
     index: "02",
     titleZh: "凭据隔离",
     titleEn: "Separated credentials",
-    copyZh: "代理访问令牌与上游凭据分开保存，客户端 Authorization 不会透传。",
+    copyZh: "客户端访问方式与上游凭据相互独立，中继在服务端构造上游认证。",
     copyEn:
-      "Proxy access tokens and upstream credentials stay separate. Client Authorization is never forwarded.",
+      "Client access and upstream credentials stay separate, with upstream authentication built server-side.",
   },
   {
     index: "03",
     titleZh: "显式契约",
     titleEn: "Explicit contract",
-    copyZh: "仅放行配置过的方法与路径组合、查询参数和少量安全请求头。",
+    copyZh: "显式许可策略控制方法与路径组合、查询参数和转发请求头。",
     copyEn:
-      "Only configured method-path pairs, query parameters, and a small safe header set are accepted.",
+      "An explicit allow policy controls method-path pairs, query parameters, and forwarded headers.",
   },
   {
     index: "04",
     titleZh: "安全响应",
     titleEn: "Safe responses",
-    copyZh: "API 仅回传 JSON/SSE；可选网页镜像只提供清理后的静态内容。",
+    copyZh: "API 回传 JSON/SSE；可选网页镜像提供经过净化的静态内容。",
     copyEn:
-      "The API returns only JSON/SSE; the optional web mirror serves sanitized static content.",
+      "The API returns JSON/SSE; the optional web mirror serves sanitized static content.",
   },
 ] as const;
 
@@ -47,17 +79,27 @@ const setupSteps = [
     titleZh: "设置固定上游",
     titleEn: "Set the fixed upstream",
     variable: "PROXY_UPSTREAM_ORIGIN",
-    copyZh: "填写一个使用 DNS hostname 的 HTTPS origin，不含路径、查询参数或凭据。",
+    copyZh: "填写一个使用 DNS hostname 的规范 HTTPS origin。",
     copyEn:
-      "Use an HTTPS origin with a DNS hostname and no path, query string, or embedded credentials.",
+      "Use a canonical HTTPS origin with a DNS hostname.",
   },
   {
-    titleZh: "创建代理访问令牌",
-    titleEn: "Create a proxy access token",
-    variable: "PROXY_ACCESS_TOKEN",
-    copyZh: "生成 32–256 字符的随机 base64url 值；客户端通过 x-proxy-token 提交。",
+    titleZh: "选择访问模式",
+    titleEn: "Choose an access mode",
+    variable: "PROXY_AUTH_MODE",
+    copyZh:
+      "浏览器应用使用 sites-user 与精确邮箱白名单；程序化客户端使用默认 token 模式。",
     copyEn:
-      "Generate a random 32–256 character base64url value. Clients send it in x-proxy-token.",
+      "Use sites-user with an exact email allowlist for browser apps, or the default token mode for programmatic clients.",
+  },
+  {
+    titleZh: "配置访问凭据",
+    titleEn: "Configure the access credential",
+    variable: "PROXY_ACCESS_TOKEN / PROXY_ALLOWED_USER_EMAILS",
+    copyZh:
+      "按所选模式配置随机令牌或允许访问的 ChatGPT 用户；两种模式都会在路由策略之前鉴权。",
+    copyEn:
+      "Configure a random token or the allowed ChatGPT users. Both modes authenticate before route policy is evaluated.",
   },
   {
     titleZh: "限定路由范围",
@@ -71,9 +113,9 @@ const setupSteps = [
     titleZh: "可选：启用网页镜像",
     titleEn: "Optional: enable the web mirror",
     variable: "WEB_RELAY_*",
-    copyZh: "显式启用后，只允许指定 ChatGPT 用户访问同一上游中列入白名单的静态路径。",
+    copyZh: "显式启用后，指定 ChatGPT 用户可以访问同一上游中列入白名单的静态路径。",
     copyEn:
-      "When enabled, only named ChatGPT users can access allowlisted static paths from the same upstream.",
+      "When enabled, named ChatGPT users can access allowlisted static paths from the same upstream.",
   },
   {
     titleZh: "部署后验证",
@@ -90,14 +132,16 @@ const curlExample = `curl -N "$SITE_URL/api/proxy/v1/responses" \\
   -H "Content-Type: application/json" \\
   --data '{"model":"your-model","input":"Hello"}'`;
 
-const errorExample = `{
-  "error": "proxy_not_configured",
-  "message": "Proxy runtime values are not configured."
-}`;
+const browserExample = `const response = await fetch("/api/proxy/v1/responses", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ model: "your-model", input: "Hello" }),
+});`;
 
 export default function Home() {
   const status = getProxyPublicStatus();
   const stateCopy = getStateCopy(status.state);
+  const authCopy = getAuthCopy(status);
   const bodyLimitMiB = MAX_REQUEST_BODY_BYTES / 1_048_576;
 
   return (
@@ -121,7 +165,7 @@ export default function Home() {
 
         <nav aria-label="页面导航 / Page navigation">
           <a href="#overview">概览 <span lang="en">Overview</span></a>
-          <a href="#example">示例 <span lang="en">Example</span></a>
+          <a href="#use-cases">用例 <span lang="en">Use cases</span></a>
           <a href="#guardrails">边界 <span lang="en">Guardrails</span></a>
           <a href="#setup">配置 <span lang="en">Setup</span></a>
         </nav>
@@ -138,7 +182,9 @@ export default function Home() {
 
       <section className="hero section-shell" id="overview">
         <div className="hero-copy">
-          <p className="eyebrow">CHATGPT SITES · API + STATIC WEB RELAY</p>
+          <p className="eyebrow">
+            POLICY-CONSTRAINED · JSON/SSE + STATIC MIRROR
+          </p>
           <h1>
             把一个受控上游，
             <br />
@@ -148,12 +194,12 @@ export default function Home() {
             Connect one controlled upstream through Sites.
           </p>
           <p className="hero-description">
-            一个部署在 ChatGPT Sites 上的受限 API 中继，并可选择提供同一
-            固定上游的只读静态网页镜像；它不是开放代理。
+            面向 ChatGPT Sites 的策略受限固定上游中继，支持 JSON/SSE
+            流式传输，并可选择提供经过净化的静态网页镜像。
             <span lang="en">
-              A constrained API relay for ChatGPT Sites with an optional
-              read-only static mirror of the same fixed upstream. It is not an
-              open proxy.
+              A policy-constrained, fixed-upstream relay for ChatGPT Sites,
+              with JSON/SSE streaming and an optional sanitized static web
+              mirror.
             </span>
           </p>
 
@@ -164,6 +210,15 @@ export default function Home() {
             </a>
             <a className="button button-secondary" href="#example">
               查看请求示例 <span lang="en">View example</span>
+            </a>
+            <a
+              className="button button-secondary"
+              href={repositoryUrl}
+              rel="noreferrer"
+              target="_blank"
+            >
+              GitHub 文档 <span lang="en">GitHub docs</span>
+              <span aria-hidden="true">↗</span>
             </a>
           </div>
 
@@ -215,7 +270,7 @@ export default function Home() {
                     ? status.state === "ready"
                       ? "已配置"
                       : "已提供"
-                    : "未设置")}
+                    : "需要配置")}
                 <small lang="en">
                   {status.upstreamHost
                     ? "Configured host"
@@ -223,7 +278,7 @@ export default function Home() {
                       ? status.state === "ready"
                         ? "Configured"
                         : "Provided"
-                      : "Not set"}
+                      : "Setup required"}
                 </small>
               </dd>
             </div>
@@ -237,38 +292,26 @@ export default function Home() {
             <div>
               <dt>网页镜像 <span lang="en">Web mirror</span></dt>
               <dd className={status.webRelayEnabled ? "value-ready" : undefined}>
-                {status.webRelayEnabled ? "已启用" : "已关闭"}
+                {status.webRelayEnabled ? "已启用" : "可选功能"}
                 <small lang="en">
                   {status.webRelayEnabled
                     ? `${status.webRelayPathCount} allowed path ${status.webRelayPathCount === 1 ? "prefix" : "prefixes"} · /web/*`
-                    : "Disabled by default · /web/*"}
+                    : "Optional · WEB_RELAY_ENABLED"}
                 </small>
               </dd>
             </div>
             <div>
-              <dt>
-                代理访问令牌 <span lang="en">Proxy access token</span>
-              </dt>
+              <dt>访问边界 <span lang="en">Access boundary</span></dt>
               <dd>
-                {status.accessTokenConfigured
-                  ? status.state === "ready"
-                    ? "已配置"
-                    : "已提供"
-                  : "未设置"}
-                <small lang="en">
-                  {status.accessTokenConfigured
-                    ? status.state === "ready"
-                      ? "Configured"
-                      : "Provided"
-                    : "Not set"}
-                </small>
+                {authCopy.zh}
+                <small lang="en">{authCopy.en}</small>
               </dd>
             </div>
             <div>
               <dt>连通性 <span lang="en">Reachability</span></dt>
               <dd>
-                尚未检查
-                <small lang="en">Not checked</small>
+                需要验证
+                <small lang="en">Verify with a safe request</small>
               </dd>
             </div>
           </dl>
@@ -294,7 +337,7 @@ export default function Home() {
                     ? status.state === "ready"
                       ? "已配置"
                       : "已提供"
-                    : "未配置")}
+                    : "需要配置")}
               </strong>
               <small lang="en">
                 {status.upstreamHost
@@ -303,7 +346,7 @@ export default function Home() {
                     ? status.state === "ready"
                       ? "Configured upstream"
                       : "Provided"
-                    : "Not configured"}
+                    : "Setup required"}
               </small>
             </div>
           </div>
@@ -342,6 +385,53 @@ export default function Home() {
         </div>
       </section>
 
+      <section className="use-cases-section section-shell" id="use-cases">
+        <div className="section-intro section-intro-wide">
+          <p className="section-kicker">BUILT FOR A CLEAR JOB · 明确用途</p>
+          <h2>
+            一个受控入口，三类实际用例
+            <span lang="en">One controlled entry point. Three practical uses.</span>
+          </h2>
+          <p>
+            当一个 Site 连接一个可信上游，并希望保护凭据、明确能力或
+            传递流式响应时，Sites Relay 最合适。
+            <span lang="en">
+              Sites Relay fits when a Site needs one trusted upstream with
+              protected credentials, an explicit capability policy, or
+              streaming responses.
+            </span>
+          </p>
+        </div>
+
+        <div className="use-case-grid">
+          {useCases.map((item) => (
+            <article className="use-case-card" key={item.index}>
+              <span className="use-case-index">{item.index}</span>
+              <h3>
+                {item.titleZh}
+                <span lang="en">{item.titleEn}</span>
+              </h3>
+              <p>
+                {item.copyZh}
+                <span lang="en">{item.copyEn}</span>
+              </p>
+            </article>
+          ))}
+        </div>
+
+        <div className="fit-note">
+          <p>
+            <strong>适合：</strong>一个固定 HTTPS 上游、JSON/SSE API、精确策略、
+            服务端凭据或只读静态内容。
+            <span lang="en">
+              <strong>Good fit:</strong> one fixed HTTPS upstream, JSON/SSE,
+              exact policy, server-side credentials, or read-only static
+              content.
+            </span>
+          </p>
+        </div>
+      </section>
+
       <section className="example-section section-shell" id="example">
         <div className="section-intro">
           <p className="section-kicker">REQUEST CONTRACT · 请求约定</p>
@@ -351,11 +441,12 @@ export default function Home() {
           </h2>
           <p>
             <code>/api/proxy/*</code> 下的允许路由会追加到运行时配置的 HTTPS
-            上游；查询参数默认全部拒绝。请求无法改变协议、主机或端口。
+            上游；显式列出的查询参数可以继续转发，协议、主机与端口始终由运行时配置控制。
             <span lang="en">
               Allowed routes under <code>/api/proxy/*</code> are appended to
-              the configured HTTPS upstream; query parameters are denied by
-              default. A request cannot change its scheme, host, or port.
+              the configured HTTPS upstream. Explicit query keys can continue
+              upstream, while runtime values retain control of the scheme,
+              host, and port.
             </span>
           </p>
         </div>
@@ -384,17 +475,19 @@ export default function Home() {
 
           <article className="code-card code-card-muted">
             <div className="code-toolbar">
-              <span>setup-required.json</span>
-              <span className="code-label code-label-amber">503</span>
+              <span>sites-user.ts</span>
+              <span className="code-label">SAME ORIGIN</span>
             </div>
             <pre>
-              <code>{errorExample}</code>
+              <code>{browserExample}</code>
             </pre>
             <p>
-              API 使用稳定的英文错误码；页面负责双语解释。
+              使用 <code>PROXY_AUTH_MODE=sites-user</code> 时，同源浏览器请求
+              通过 ChatGPT 身份与精确邮箱白名单完成鉴权。
               <span lang="en">
-                The API keeps stable English error codes; this page explains
-                them bilingually.
+                With <code>PROXY_AUTH_MODE=sites-user</code>, same-origin
+                browser requests use ChatGPT identity and an exact email
+                allowlist for access.
               </span>
             </p>
           </article>
@@ -405,15 +498,16 @@ export default function Home() {
         <div className="section-intro section-intro-wide">
           <p className="section-kicker">SECURITY BOUNDARY · 安全边界</p>
           <h2>
-            边界先于便利
-            <span lang="en">Guardrails before convenience.</span>
+            清晰边界，稳定中继
+            <span lang="en">Clear boundaries for a dependable relay.</span>
           </h2>
           <p>
-            API 中继与可选静态镜像都只连接同一个固定上游；它不是任意 URL
-            网页代理、VPN 或 TCP 隧道。
+            API 中继与可选静态镜像共享同一个固定上游，并在应用层提供
+            JSON/SSE 与净化静态内容。
             <span lang="en">
-              Both the API relay and optional static mirror connect only to one
-              fixed upstream—not arbitrary URLs, a VPN, or a TCP tunnel.
+              The API relay and optional static mirror share one fixed upstream
+              and provide JSON/SSE plus sanitized static content at the
+              application layer.
             </span>
           </p>
         </div>
@@ -434,23 +528,6 @@ export default function Home() {
           ))}
         </div>
 
-        <div className="boundary-note">
-          <span className="boundary-icon" aria-hidden="true">↳</span>
-          <p>
-            <strong>明确不支持：</strong>客户端指定任意 URL、API 入口返回
-            HTML/JS/SVG、跨策略重定向、WebSocket、CONNECT、上传文件。
-            静态镜像会移除脚本、表单、Cookie 与外部资源。
-            完整网页兼容属于独立的 Browser Relay 架构，不在当前版本内。
-            <span lang="en">
-              <strong>Explicitly unsupported:</strong> arbitrary client URLs,
-              HTML/JS/SVG on the API endpoint, out-of-policy redirects,
-              WebSocket, CONNECT, and file uploads. The static mirror removes
-              scripts, forms, cookies, and external resources. Full web
-              compatibility belongs to a separate Browser Relay architecture,
-              not this release.
-            </span>
-          </p>
-        </div>
       </section>
 
       <section className="setup-section" id="setup">
@@ -458,15 +535,15 @@ export default function Home() {
           <div className="section-intro">
             <p className="section-kicker">RUNTIME SETUP · 运行时配置</p>
             <h2>
-              五步完成配置
-              <span lang="en">Configure in five steps.</span>
+              六步完成配置
+              <span lang="en">Configure in six steps.</span>
             </h2>
             <p>
-              密钥只写入 Sites 的运行时变量。本地开发使用未提交的
+              密钥保存在 Sites 运行时变量中。本地开发使用仅限本机的
               <code>.env.local</code>。
               <span lang="en">
-                Put secrets only in Sites runtime values. For local
-                development, use an uncommitted <code>.env.local</code>.
+                Keep secrets in Sites runtime values. For local development,
+                use a local-only <code>.env.local</code>.
               </span>
             </p>
           </div>
@@ -503,18 +580,39 @@ export default function Home() {
           </p>
         </div>
         <p>
-          部署成功只代表站点可访问，不代表上游已验证。
+          部署完成后，请通过无副作用请求验证上游连通性。
           <span lang="en">
-            A successful deployment does not mean the upstream has been
-            verified.
+            After deployment, verify upstream reachability with a
+            side-effect-free request.
           </span>
         </p>
-        <a href="/api/health">
-          /api/health <span aria-hidden="true">↗</span>
-        </a>
+        <div className="footer-links">
+          <a href="/api/health">
+            /api/health <span aria-hidden="true">↗</span>
+          </a>
+          <a href={repositoryUrl} rel="noreferrer" target="_blank">
+            GitHub <span aria-hidden="true">↗</span>
+          </a>
+        </div>
       </footer>
     </main>
   );
+}
+
+function getAuthCopy(
+  status: ReturnType<typeof getProxyPublicStatus>,
+): { en: string; zh: string } {
+  if (status.authMode === "sites-user") {
+    return status.proxyUserAllowlistConfigured
+      ? { en: "Sites user allowlist", zh: "Sites 用户白名单" }
+      : { en: "Sites user setup required", zh: "等待用户白名单" };
+  }
+  if (status.authMode === "token") {
+    return status.accessTokenConfigured
+      ? { en: "Proxy token", zh: "代理访问令牌" }
+      : { en: "Token setup required", zh: "等待访问令牌" };
+  }
+  return { en: "Invalid authentication mode", zh: "鉴权模式有误" };
 }
 
 function getStateCopy(state: "ready" | "setup_required" | "invalid") {
@@ -522,8 +620,8 @@ function getStateCopy(state: "ready" | "setup_required" | "invalid") {
     return {
       en: "Configured",
       noteEn:
-        "Runtime values are present. Upstream reachability is not verified yet.",
-      noteZh: "运行时配置已就绪，但尚未验证上游连通性。",
+        "Runtime values are ready. Verify upstream reachability with a safe request.",
+      noteZh: "运行时配置已就绪，请使用安全请求验证上游连通性。",
       zh: "已配置",
     };
   }
@@ -531,16 +629,16 @@ function getStateCopy(state: "ready" | "setup_required" | "invalid") {
     return {
       en: "Invalid config",
       noteEn:
-        "One or more runtime values are invalid. The proxy is failing closed.",
-      noteZh: "运行时配置有误；代理已按安全策略停止转发。",
+        "Review the runtime values. Forwarding resumes after validation succeeds.",
+      noteZh: "请检查运行时变量；验证通过后即可恢复转发。",
       zh: "配置有误",
     };
   }
   return {
     en: "Setup required",
     noteEn:
-      "This build has no complete upstream configuration. Requests return 503.",
-    noteZh: "此版本尚未完成上游配置；代理请求会返回 503。",
+      "Add the remaining runtime values to activate proxy requests.",
+    noteZh: "补全运行时变量即可启用代理请求。",
     zh: "等待配置",
   };
 }

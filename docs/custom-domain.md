@@ -3,8 +3,8 @@
 English | [Chinese](./custom-domain.zh-CN.md)
 
 Sites Relay supports a guided custom-domain workflow through the repository
-Agent. The Site itself never receives Sites management credentials, DNS API
-tokens, or registrar passwords.
+Agent. Sites management credentials, DNS API tokens, and registrar passwords
+remain in their respective control planes.
 
 ## What "near one-click" means
 
@@ -18,7 +18,7 @@ The Agent will:
 1. Read the exact Sites project ID from `.openai/hosting.json`.
 2. Confirm that the Site has a production deployment.
 3. Validate the bare hostname and check whether it is already attached.
-4. Add the hostname through Sites without changing deployment access.
+4. Add the hostname through Sites while preserving deployment access.
 5. Return the exact routing and validation records required by Sites.
 
 You then add those records at your DNS provider. After DNS changes are in
@@ -26,32 +26,31 @@ place, tell the Agent to refresh the custom-domain status. DNS publication and
 certificate validation are asynchronous, so the domain may remain pending for
 a while after the records are added.
 
-Use only a bare hostname such as `relay.example.com` or `example.com`. Do not
-include `https://`, a path, query parameters, or fragments.
+Provide a bare hostname such as `relay.example.com` or `example.com`; the
+hostname field contains the domain name itself.
 
 ## DNS boundary
 
 Subdomains normally receive a CNAME routing target. Zone-apex domains normally
 receive A record targets. Sites also returns the App Garden and Cloudflare
-validation records required for the specific hostname. Copy the records from
-the Agent's result exactly; do not infer targets from an example in this
-document.
+validation records required for the specific hostname. Copy the exact records
+from the Agent's result; the examples in this document illustrate the input
+shape.
 
-This workflow stops at your DNS provider because the repository does not store
-DNS credentials. If a DNS-provider connector is available in a future session,
-changing DNS remains a separate external action and requires separate
-authorization.
+Complete the returned records at your DNS provider, where DNS credentials
+remain. A future DNS-provider connector can perform that external action after
+separate authorization.
 
 ## Access control
 
-Attaching a custom domain does not make a Site public and does not bypass its
-existing Sites access policy.
+Attaching a custom domain preserves the Site's existing visibility and access
+policy.
 
 Sites custom access can allow several named users, but each email must resolve
 to an active user in the Site's workspace. The owner always remains allowed.
 Ask the Agent to add the complete email list while preserving
-`access_mode=custom`. If an email is not an active workspace user, invite or add
-that user to the workspace before retrying.
+`access_mode=custom`. For a new email, invite or add that user to the workspace,
+then retry.
 
 Platform access and application authorization are separate layers:
 
@@ -60,12 +59,11 @@ Platform access and application authorization are separate layers:
   `PROXY_AUTH_MODE=sites-user`.
 - `WEB_RELAY_ALLOWED_USER_EMAILS` authorizes the static web mirror.
 
-A user must pass every enabled layer. Email allowlists belong in Sites access
-configuration or server-side runtime variables, never in source files,
-client-side code, logs, or `.openai/hosting.json`.
+A user must pass every enabled layer. Store email allowlists in Sites access
+configuration or server-side runtime variables.
 
 ## Remove a domain
 
-Domain removal is a separate destructive action. Give the Agent the exact
-hostname to remove and confirm that traffic may stop before it changes the
-Sites project. Clean up obsolete DNS records afterward.
+Schedule a maintenance window, give the Agent the exact hostname, and confirm
+the removal before it changes the Sites project. Clean up obsolete DNS records
+afterward.

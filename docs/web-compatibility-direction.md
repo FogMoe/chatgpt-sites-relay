@@ -10,16 +10,6 @@ This direction lets authenticated users enter any public `http://` or `https://`
 
 "Full compatibility" is an architectural target, not a guarantee for every site. A site's anti-automation controls, DRM, hardware requirements, browser-extension dependencies, or third-party sign-in restrictions may still prevent it from working.
 
-## Non-goals
-
-This direction does not turn Sites Relay into:
-
-- a public anonymous proxy without authentication
-- an HTTP `CONNECT` or SOCKS forward proxy for arbitrary clients
-- an SSRF bridge to loopback, private, link-local, cloud metadata, or other non-public services
-- a content proxy that executes target HTML or JavaScript directly in the Sites origin
-- a replacement of the fixed upstream and route allowlist on the current `/api/proxy/*` endpoint
-
 ## Architecture decision
 
 Full compatibility should execute sites in a real browser instead of depending on HTML, CSS, and JavaScript text rewriting. The new component is provisionally called Browser Relay and is deployed separately from Sites Relay.

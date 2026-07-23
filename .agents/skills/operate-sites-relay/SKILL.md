@@ -13,15 +13,16 @@ Read these files in order:
 
 1. `README.md` for product scope, configuration contract, request contract, and deployment workflow.
 2. `.openai/hosting.json` for the Sites project identifier. Reuse `project_id` exactly when it exists.
-3. `package.json` for the Node.js requirement and canonical commands.
+3. `package.json` for the Node.js requirement, repository metadata, and canonical commands.
 4. `lib/proxy-config.ts` for runtime values, route policy, size limits, and timeouts.
 5. `app/chatgpt-auth.ts` for the Sites dispatcher identity contract and safe sign-in return paths.
 6. `app/api/proxy/[[...path]]/route.ts`, `app/web/[[...path]]/route.ts`, `lib/web-mirror.ts`, and `app/api/health/route.ts` for API forwarding, static mirroring, transformation, and status behavior.
 7. `.github/workflows/ci.yml` for the automated validation contract.
-8. `docs/static-web-mirror.md` for the current optional mirror contract.
-9. `docs/custom-domain.md` for the guided custom-domain and access-control workflow.
-10. `tests/rendered-html.test.mjs` for required regression boundaries.
-11. `git status --short` to preserve existing user changes and avoid cleaning unrelated work.
+8. `docs/examples.md` and `docs/roadmap.md` for supported client patterns, product direction, and scope.
+9. `docs/static-web-mirror.md` for the current optional mirror contract.
+10. `docs/custom-domain.md` for the guided custom-domain and access-control workflow.
+11. `tests/rendered-html.test.mjs` for required regression boundaries.
+12. `git status --short` to preserve existing user changes and avoid cleaning unrelated work.
 
 The separate Browser Relay architecture proposed for full web compatibility is documented in `docs/web-compatibility-direction.md`. It does not expand the current API relay contract.
 
@@ -29,7 +30,8 @@ The separate Browser Relay architecture proposed for full web compatibility is d
 
 - Accept one runtime-configured HTTPS upstream origin using a DNS hostname. Do not accept client-selected target URLs.
 - Use `PROXY_ALLOWED_ROUTES` to bind HTTP methods to path prefixes. Deny query parameters by default and allow only exact keys in `PROXY_ALLOWED_QUERY_KEYS`.
-- Validate `x-proxy-token` before returning route-policy results so the policy surface is not exposed.
+- Support `PROXY_AUTH_MODE=token` (default) for programmatic clients and `PROXY_AUTH_MODE=sites-user` for signed-in Sites visitors. Token mode requires a strong `PROXY_ACCESS_TOKEN`; Sites-user mode requires exact emails in `PROXY_ALLOWED_USER_EMAILS`.
+- Authenticate the selected access mode before returning route-policy results so the policy surface is not exposed. In Sites-user mode, return 401 for anonymous callers and 403 for signed-in users outside the allowlist without echoing identities.
 - Keep the proxy access token separate from upstream `Authorization`. Never forward client `Authorization`, cookies, identity headers, or forwarding-chain headers.
 - Forward only `GET`, `HEAD`, and `POST`. Handle `OPTIONS` CORS preflight locally.
 - Accept only non-empty UTF-8 JSON POST bodies up to 1 MiB. Fail closed on compressed bodies and file uploads.
@@ -37,6 +39,7 @@ The separate Browser Relay architecture proposed for full web compatibility is d
 - Reject encoded percent, slash, backslash, NUL, dot-segment, IP-literal, local-hostname, and trailing-dot hostname bypasses.
 - Return 503 for missing or invalid configuration. `ready` means static validation passed; it does not claim upstream reachability.
 - Hide the exact upstream hostname from the home page and `/api/health` unless `EXPOSE_UPSTREAM_HOST=true`.
+- Trust Sites-user identity only behind the Sites dispatcher. Local or direct Worker requests can forge an ordinary identity header and are not an equivalent production authentication boundary.
 - Do not weaken these boundaries for compatibility, debugging, or examples. Explain risk and obtain explicit authorization before proposing broader capabilities.
 
 ## Preserve the static mirror contract
@@ -83,7 +86,7 @@ At minimum, confirm:
 - Missing or invalid configuration makes `/api/health` return 503 without exposing secrets.
 - Complete static configuration makes `/api/health` return 200 while `reachability` remains `not_checked`.
 - The exact upstream hostname stays hidden by default and appears only after the explicit exposure switch is enabled.
-- A wrong token returns 401 before route policy, and out-of-policy methods, paths, queries, origins, and encoded bypasses fail.
+- A wrong token returns 401 before route policy. In Sites-user mode, anonymous and non-allowlisted users are denied before policy checks. Out-of-policy methods, paths, queries, origins, and encoded bypasses fail in both modes.
 - Header isolation, the 1 MiB request limit, response type/size/timeout policy, and first-chunk SSE streaming pass.
 - When the static mirror is enabled, missing or invalid user allowlists fail closed; anonymous and non-allowlisted users are denied before policy checks; and path/query policy, HTML sanitization, CSS rewriting, safe asset handling, redirect policy, and response isolation pass.
 - `.gitignore` does not ignore `build/`, `lib/`, or other required deployment source.

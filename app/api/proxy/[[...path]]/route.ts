@@ -1,3 +1,4 @@
+import { getChatGPTUser } from "@/app/chatgpt-auth";
 import {
   isAllowedProxyRoute,
   JSON_RESPONSE_TIMEOUT_MS,
@@ -109,20 +110,9 @@ async function handleProxyRequest(
     );
   }
 
-  if (
-    !(await constantTimeEqual(
-      request.headers.get("x-proxy-token") ?? "",
-      config.accessToken,
-    ))
-  ) {
-    return withCors(
-      errorResponse(
-        401,
-        "proxy_unauthorized",
-        "A valid proxy access token is required.",
-      ),
-      cors,
-    );
+  const authorizationResponse = await authorizeProxyRequest(request, config);
+  if (authorizationResponse) {
+    return withCors(authorizationResponse, cors);
   }
 
   const pathResult = validateProxyPath(requestUrl, request.method, config);
@@ -283,6 +273,47 @@ async function handleProxyRequest(
     headers: responseHeaders,
     status: upstreamResponse.status,
   });
+}
+
+async function authorizeProxyRequest(
+  request: Request,
+  config: ProxyConfig,
+): Promise<Response | null> {
+  if (config.authMode === "token") {
+    if (
+      !(await constantTimeEqual(
+        request.headers.get("x-proxy-token") ?? "",
+        config.accessToken ?? "",
+      ))
+    ) {
+      return errorResponse(
+        401,
+        "proxy_unauthorized",
+        "A valid proxy access token is required.",
+      );
+    }
+    return null;
+  }
+
+  const user = await getChatGPTUser();
+  if (!user) {
+    return errorResponse(
+      401,
+      "proxy_authentication_required",
+      "Sign in with ChatGPT to access this proxy.",
+    );
+  }
+
+  const email = user.email.trim().toLowerCase();
+  if (!config.allowedUserEmails.includes(email)) {
+    return errorResponse(
+      403,
+      "proxy_user_not_allowed",
+      "This ChatGPT user is not allowed to access this proxy.",
+    );
+  }
+
+  return null;
 }
 
 async function handleOptions(request: Request): Promise<Response> {

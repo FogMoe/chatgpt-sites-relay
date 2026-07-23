@@ -26,7 +26,7 @@ Sites Relay 为 ChatGPT Sites 提供受限 JSON/SSE API 中继和可选的只读
 需要 Node.js 22.13.0 或更高版本。
 
 ```powershell
-git clone https://github.com/scarletkc/chatgpt-sites-relay.git
+git clone https://github.com/FogMoe/chatgpt-sites-relay.git
 Set-Location chatgpt-sites-relay
 npm ci
 Copy-Item .env.example .env.local
@@ -34,6 +34,8 @@ npm run dev
 ```
 
 在其他 shell 中，将 `Copy-Item` 替换为 `cp`。根据 `.env.example` 设置本地变量；不要提交 `.env.local`、访问令牌、上游凭据或真实服务 URL。缺少运行时配置时，界面和 `/api/health` 应明确报告未配置状态，而不是静默放宽策略。
+
+可复现缺陷和范围明确的功能建议请使用仓库提供的结构化 Issue 表单。疑似漏洞应按照[安全策略](../.github/SECURITY.zh-CN.md)通过私密渠道报告。
 
 ## 变更要求
 
