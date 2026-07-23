@@ -1,8 +1,8 @@
 # Sites Relay
 
-English | [Chinese](docs/README.zh-CN.md)
+English | [Chinese](./docs/README.zh-CN.md)
 
-![Sites Relay — constrained relay for ChatGPT Sites](public/og.png)
+![Sites Relay — constrained relay for ChatGPT Sites](./public/og.png)
 
 Sites Relay is a constrained relay for one fixed upstream, built for ChatGPT Sites. It provides a JSON/SSE API relay and an optional read-only static web mirror. It never accepts arbitrary client-supplied target URLs.
 
@@ -10,7 +10,7 @@ Sites Relay is a constrained relay for one fixed upstream, built for ChatGPT Sit
 
 The primary API relay is designed for JSON APIs and Server-Sent Events (SSE), including AI APIs with streaming responses. The upstream origin, proxy access token, method-path policy, query policy, and upstream credentials are controlled by server-side runtime values.
 
-The optional static web mirror serves sanitized HTML, rewritten CSS, images, and fonts from the same fixed upstream. It is disabled by default, supports only `GET` and `HEAD`, and removes scripts, forms, cookies, inline styles, embedded content, and external resources. See [`docs/static-web-mirror.md`](docs/static-web-mirror.md) for its complete contract.
+The optional static web mirror serves sanitized HTML, rewritten CSS, images, and fonts from the same fixed upstream. It is disabled by default, supports only `GET` and `HEAD`, and removes scripts, forms, cookies, inline styles, embedded content, and external resources. See [`docs/static-web-mirror.md`](./docs/static-web-mirror.md) for its complete contract.
 
 This version intentionally does not provide:
 
@@ -19,7 +19,7 @@ This version intentionally does not provide:
 - WebSocket, CONNECT, TCP, or UDP tunneling
 - file uploads, unrestricted redirects, or client `Authorization` forwarding
 
-See [`docs/web-compatibility-direction.md`](docs/web-compatibility-direction.md) for the proposed architecture that lets authenticated users enter any public URL with JavaScript, API, cookie, and form compatibility. It uses a separate remote-browser service and does not change the current API relay contract.
+See [`docs/web-compatibility-direction.md`](./docs/web-compatibility-direction.md) for the proposed architecture that lets authenticated users enter any public URL with JavaScript, API, cookie, and form compatibility. It uses a separate remote-browser service and does not change the current API relay contract.
 
 ## Quick start
 
@@ -79,7 +79,7 @@ Response bodies stream through without buffering an entire SSE response first. A
 
 The optional `/web/*` surface is a read-only mirror of the same configured upstream, not an arbitrary-URL web proxy. It deliberately sacrifices JavaScript, cookies, and forms to keep untrusted upstream code out of the Sites origin.
 
-Read [`docs/static-web-mirror.md`](docs/static-web-mirror.md) before enabling it. Keep deployments that expose this surface protected by Sites access control.
+Read [`docs/static-web-mirror.md`](./docs/static-web-mirror.md) before enabling it. Keep deployments that expose this surface protected by Sites access control.
 
 ## Status and errors
 
@@ -120,7 +120,7 @@ The repository includes a Codex Skill at `.agents/skills/operate-sites-relay/`. 
 
 ## Contributing
 
-See [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) for the development setup, validation workflow, pull request checklist, and Conventional Commits rules.
+See [`docs/CONTRIBUTING.md`](./docs/CONTRIBUTING.md) for the development setup, validation workflow, pull request checklist, and Conventional Commits rules.
 
 ## Deploy to Sites
 

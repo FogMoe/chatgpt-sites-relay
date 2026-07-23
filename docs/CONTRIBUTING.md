@@ -1,6 +1,6 @@
 # Contributing
 
-English | [Chinese](CONTRIBUTING.zh-CN.md)
+English | [Chinese](./CONTRIBUTING.zh-CN.md)
 
 Thank you for helping improve Sites Relay. This repository is small, but it sits between an application and its upstream service, so changes to network capabilities, authentication, or response handling are security-sensitive.
 
@@ -17,9 +17,9 @@ The following capabilities are out of scope unless a new architecture and threat
 
 If a proposal expands network access, open an issue first describing the use case, authentication model, SSRF and DNS risks, resource limits, and abuse controls before submitting an implementation.
 
-The current architecture proposal for full web compatibility is in [`web-compatibility-direction.md`](web-compatibility-direction.md). It describes a separate remote-browser service and does not mean that the current API relay accepts arbitrary URLs.
+The current architecture proposal for full web compatibility is in [`web-compatibility-direction.md`](./web-compatibility-direction.md). It describes a separate remote-browser service and does not mean that the current API relay accepts arbitrary URLs.
 
-The existing fixed-upstream, read-only static mirror is documented separately in [`static-web-mirror.md`](static-web-mirror.md).
+The existing fixed-upstream, read-only static mirror is documented separately in [`static-web-mirror.md`](./static-web-mirror.md).
 
 ## Local development
 

@@ -1,8 +1,8 @@
 # 完整网页兼容方向
 
-[英文](web-compatibility-direction.md) | 简体中文
+[英文](./web-compatibility-direction.md) | 简体中文
 
-> 状态：架构提案，尚未实现。当前产品契约仍以 [`README.zh-CN.md`](README.zh-CN.md) 为准。
+> 状态：架构提案，尚未实现。当前产品契约仍以 [`README.zh-CN.md`](./README.zh-CN.md) 为准。
 
 ## 目标
 

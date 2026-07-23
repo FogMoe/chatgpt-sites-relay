@@ -1,6 +1,6 @@
 # Static web mirror
 
-English | [Chinese](static-web-mirror.zh-CN.md)
+English | [Chinese](./static-web-mirror.zh-CN.md)
 
 The optional static web mirror exposes sanitized, read-only content from the same fixed HTTPS upstream as the API relay. It is implemented at `/web/*`, disabled by default, and never accepts a target origin from the client.
 
@@ -94,4 +94,4 @@ The mirror does not pass through upstream cookies or arbitrary response headers.
 
 Pages that require JavaScript, cookies, login state, forms, inline styles, cross-origin assets, WebSocket, media, or embedded content will not work as the original site does. That is intentional.
 
-For a future architecture that supports JavaScript, APIs, session cookies, and forms without executing upstream code in the Sites origin, see [`web-compatibility-direction.md`](web-compatibility-direction.md).
+For a future architecture that supports JavaScript, APIs, session cookies, and forms without executing upstream code in the Sites origin, see [`web-compatibility-direction.md`](./web-compatibility-direction.md).

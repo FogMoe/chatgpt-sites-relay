@@ -1,6 +1,6 @@
 # 静态网页镜像
 
-[英文](static-web-mirror.md) | 简体中文
+[英文](./static-web-mirror.md) | 简体中文
 
 可选静态网页镜像从 API 中继使用的同一个固定 HTTPS 上游提供经过清理的只读内容。入口为 `/web/*`，默认关闭，并且不接受客户端提供的目标 origin。
 
@@ -94,4 +94,4 @@ CSS 会在返回前经过解析：
 
 依赖 JavaScript、Cookie、登录状态、表单、内联样式、跨域资源、WebSocket、媒体或嵌入内容的页面不会像原网站一样工作。这是有意的安全边界。
 
-未来如果要支持 JavaScript、API、会话 Cookie 和表单，同时不让上游代码在 Sites origin 中执行，请参阅 [`web-compatibility-direction.zh-CN.md`](web-compatibility-direction.zh-CN.md)。
+未来如果要支持 JavaScript、API、会话 Cookie 和表单，同时不让上游代码在 Sites origin 中执行，请参阅 [`web-compatibility-direction.zh-CN.md`](./web-compatibility-direction.zh-CN.md)。

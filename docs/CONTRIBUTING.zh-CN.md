@@ -1,6 +1,6 @@
 # 贡献指南
 
-[英文](CONTRIBUTING.md) | 简体中文
+[英文](./CONTRIBUTING.md) | 简体中文
 
 感谢你帮助改进 Sites Relay。这个仓库体量不大，但处在应用与上游服务之间，任何网络能力、认证或响应处理改动都应被视为安全相关改动。
 
@@ -17,9 +17,9 @@ Sites Relay 为 ChatGPT Sites 提供受限 JSON/SSE API 中继和可选的只读
 
 如果提案会扩大网络访问能力，请先在 Issue 中说明使用场景、认证模型、SSRF 与 DNS 风险、资源限制和滥用控制，再提交实现。
 
-完整网页兼容的现有架构提案见 [`web-compatibility-direction.zh-CN.md`](web-compatibility-direction.zh-CN.md)。该提案描述独立的远程浏览器服务，不表示当前 API 中继已经支持任意 URL。
+完整网页兼容的现有架构提案见 [`web-compatibility-direction.zh-CN.md`](./web-compatibility-direction.zh-CN.md)。该提案描述独立的远程浏览器服务，不表示当前 API 中继已经支持任意 URL。
 
-现有固定上游、只读静态镜像的契约另见 [`static-web-mirror.zh-CN.md`](static-web-mirror.zh-CN.md)。
+现有固定上游、只读静态镜像的契约另见 [`static-web-mirror.zh-CN.md`](./static-web-mirror.zh-CN.md)。
 
 ## 本地开发
 

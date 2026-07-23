@@ -1,6 +1,6 @@
 # Full web compatibility direction
 
-English | [Chinese](web-compatibility-direction.zh-CN.md)
+English | [Chinese](./web-compatibility-direction.zh-CN.md)
 
 > Status: Architecture proposal, not implemented. The current product contract remains in [`README.md`](../README.md).
 

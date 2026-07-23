@@ -80,6 +80,26 @@ async function withProxyEnv(values, run) {
   }
 }
 
+async function assertLocalMarkdownLinksExist(relativePath, markdown) {
+  const documentUrl = new URL(relativePath, templateRoot);
+  const checks = [];
+
+  for (const match of markdown.matchAll(/!?\[[^\]]*\]\(([^)\s]+)\)/g)) {
+    const href = match[1];
+    if (
+      href.startsWith("#") ||
+      /^[a-z][a-z0-9+.-]*:/i.test(href)
+    ) {
+      continue;
+    }
+
+    const target = href.split("#", 1)[0];
+    if (target) checks.push(access(new URL(target, documentUrl)));
+  }
+
+  await Promise.all(checks);
+}
+
 // Load the optional web route before tests replace global fetch.
 await request("/web", undefined, readyEnv);
 
@@ -1161,36 +1181,64 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.match(packageJson, /"name": "sites-relay"/);
   assert.match(readme, /Sites Relay/);
   assert.match(readme, /## Security boundaries/);
-  assert.match(readme, /\[Chinese\]\(docs\/README\.zh-CN\.md\)/);
-  assert.match(readme, /!\[Sites Relay [^\]]+\]\(public\/og\.png\)/);
   assert.match(
     readme,
-    /\[`docs\/CONTRIBUTING\.md`\]\(docs\/CONTRIBUTING\.md\)/,
+    /English \| \[Chinese\]\(\.\/docs\/README\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(readme, /\[English\]\(/);
+  assert.match(readme, /!\[Sites Relay [^\]]+\]\(\.\/public\/og\.png\)/);
+  assert.match(
+    readme,
+    /\[`docs\/CONTRIBUTING\.md`\]\(\.\/docs\/CONTRIBUTING\.md\)/,
   );
   assert.match(
     readme,
-    /\[`docs\/web-compatibility-direction\.md`\]\(docs\/web-compatibility-direction\.md\)/,
+    /\[`docs\/web-compatibility-direction\.md`\]\(\.\/docs\/web-compatibility-direction\.md\)/,
   );
   assert.match(
     readme,
-    /\[`docs\/static-web-mirror\.md`\]\(docs\/static-web-mirror\.md\)/,
+    /\[`docs\/static-web-mirror\.md`\]\(\.\/docs\/static-web-mirror\.md\)/,
   );
   assert.doesNotMatch(readme, /[\u3400-\u9fff]/);
   assert.match(readmeZh, /## 安全边界/);
-  assert.match(readmeZh, /\[英文\]\(\.\.\/README\.md\)/);
+  assert.match(readmeZh, /\[英文\]\(\.\.\/README\.md\) \| 简体中文/);
+  assert.doesNotMatch(readmeZh, /\[简体中文\]\(/);
   assert.match(readmeZh, /!\[Sites Relay[^\]]+\]\(\.\.\/public\/og\.png\)/);
-  assert.match(readmeZh, /static-web-mirror\.zh-CN\.md/);
+  assert.match(
+    readmeZh,
+    /\[`static-web-mirror\.zh-CN\.md`\]\(\.\/static-web-mirror\.zh-CN\.md\)/,
+  );
   assert.match(contributing, /Conventional Commits 1\.0\.0/);
   assert.match(contributing, /BREAKING CHANGE:/);
   assert.match(contributing, /general-purpose HTTP forward proxying, SOCKS/);
+  assert.match(
+    contributing,
+    /English \| \[Chinese\]\(\.\/CONTRIBUTING\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(contributing, /\[English\]\(/);
   assert.doesNotMatch(contributing, /[\u3400-\u9fff]/);
   assert.match(contributingZh, /## 项目边界/);
   assert.match(contributingZh, /Conventional Commits 1\.0\.0/);
+  assert.match(
+    contributingZh,
+    /\[英文\]\(\.\/CONTRIBUTING\.md\) \| 简体中文/,
+  );
+  assert.doesNotMatch(contributingZh, /\[简体中文\]\(/);
   assert.match(staticWebMirror, /disabled by default/);
   assert.match(staticWebMirror, /WEB_RELAY_ALLOWED_PATH_PREFIXES/);
+  assert.match(
+    staticWebMirror,
+    /English \| \[Chinese\]\(\.\/static-web-mirror\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(staticWebMirror, /\[English\]\(/);
   assert.doesNotMatch(staticWebMirror, /[\u3400-\u9fff]/);
   assert.match(staticWebMirrorZh, /# 静态网页镜像/);
   assert.match(staticWebMirrorZh, /WEB_RELAY_ALLOWED_PATH_PREFIXES/);
+  assert.match(
+    staticWebMirrorZh,
+    /\[英文\]\(\.\/static-web-mirror\.md\) \| 简体中文/,
+  );
+  assert.doesNotMatch(staticWebMirrorZh, /\[简体中文\]\(/);
   assert.match(
     webCompatibilityDirection,
     /Status: Architecture proposal, not implemented/,
@@ -1199,6 +1247,11 @@ test("removes the disposable starter surface and keeps project metadata", async 
     webCompatibilityDirection,
     /deployed separately from Sites Relay/,
   );
+  assert.match(
+    webCompatibilityDirection,
+    /English \| \[Chinese\]\(\.\/web-compatibility-direction\.zh-CN\.md\)/,
+  );
+  assert.doesNotMatch(webCompatibilityDirection, /\[English\]\(/);
   assert.doesNotMatch(
     webCompatibilityDirection,
     /[\u3400-\u9fff]/,
@@ -1207,6 +1260,11 @@ test("removes the disposable starter surface and keeps project metadata", async 
     webCompatibilityDirectionZh,
     /状态：架构提案，尚未实现/,
   );
+  assert.match(
+    webCompatibilityDirectionZh,
+    /\[英文\]\(\.\/web-compatibility-direction\.md\) \| 简体中文/,
+  );
+  assert.doesNotMatch(webCompatibilityDirectionZh, /\[简体中文\]\(/);
   assert.match(envExample, /PROXY_ALLOWED_ROUTES=/);
   assert.match(envExample, /WEB_RELAY_ENABLED=false/);
   assert.match(envExample, /WEB_RELAY_ALLOWED_PATH_PREFIXES=/);
@@ -1219,6 +1277,31 @@ test("removes the disposable starter surface and keeps project metadata", async 
   assert.doesNotMatch(repositorySkill, /[^\x00-\x7f]/);
   assert.match(skillMetadata, /\$operate-sites-relay/);
   assert.doesNotMatch(skillMetadata, /[^\x00-\x7f]/);
+  await Promise.all([
+    assertLocalMarkdownLinksExist("README.md", readme),
+    assertLocalMarkdownLinksExist("docs/README.zh-CN.md", readmeZh),
+    assertLocalMarkdownLinksExist("docs/CONTRIBUTING.md", contributing),
+    assertLocalMarkdownLinksExist(
+      "docs/CONTRIBUTING.zh-CN.md",
+      contributingZh,
+    ),
+    assertLocalMarkdownLinksExist(
+      "docs/static-web-mirror.md",
+      staticWebMirror,
+    ),
+    assertLocalMarkdownLinksExist(
+      "docs/static-web-mirror.zh-CN.md",
+      staticWebMirrorZh,
+    ),
+    assertLocalMarkdownLinksExist(
+      "docs/web-compatibility-direction.md",
+      webCompatibilityDirection,
+    ),
+    assertLocalMarkdownLinksExist(
+      "docs/web-compatibility-direction.zh-CN.md",
+      webCompatibilityDirectionZh,
+    ),
+  ]);
   const hostingConfig = JSON.parse(hosting);
   assert.equal(hostingConfig.d1, null);
   assert.equal(hostingConfig.r2, null);
